@@ -1,47 +1,34 @@
 # Safadeza Brasil
-=================================================
 
-REQUISITOS
-- Hospedagem com PHP 8.0+ e extensão cURL (praticamente todas têm)
-- MySQL (quando for ligar o banco)
+Site de vídeos adultos (+18) estilo tube, em PHP + MySQL, com painel admin, importador de embeds e área de SEO.
 
-COMO SUBIR
-1. Envie TODOS os arquivos desta pasta para a pasta pública da hospedagem
-   (public_html, htdocs ou www) usando o Gerenciador de Arquivos ou FTP.
-2. Dê permissão de escrita à pasta /data (755 ou 775).
-3. Acesse seudominio.com/admin
-   Usuário: admin   Senha: admin123
-4. TROQUE A SENHA em Admin > Configurações > Login do admin.
+## Requisitos
+- Hospedagem com PHP 8.0+ (extensões pdo_mysql, curl, mbstring)
+- Um banco MySQL
 
-NOME DO SITE
-- Está em config.php -> SITE_NAME (aparece em todo o site e no painel).
-- Também dá para trocar em Admin > Configurações, sem mexer em arquivo.
+## Instalação (3 passos, sem mexer em código)
+1. Envie todos os arquivos para a pasta pública da hospedagem (`public_html`, `htdocs` ou `www`).
+2. No painel da hospedagem, crie um **banco MySQL** e um **usuário** com senha, e adicione o usuário ao banco com **todos os privilégios**.
+3. Acesse `seudominio.com` — o **instalador** abre sozinho. Ele:
+   - confere o servidor,
+   - conecta no banco e cria as tabelas,
+   - pede o nome do site e cria o seu login de admin.
 
-IMPORTAR VÍDEOS (Admin > Importador)
-- Link único: cole o link do vídeo ou o <iframe>. Título, thumb, duração e
-  tags são buscados automaticamente. Revise e clique em Importar.
-- Em massa: cole vários links (um por linha) e clique em Iniciar.
-- Buscar e importar: pesquise por palavra-chave no Pornhub, RedTube ou
-  Eporner, selecione os vídeos e importe vários de uma vez.
-- Sites: XVideos, XNXX, Pornhub, xHamster, RedTube, YouPorn, SpankBang,
-  Eporner, Tube8, TXXX e qualquer outro site que dê código <iframe>.
+Pronto: você cai direto no painel para importar vídeos.
+Os dados do banco ficam em `data/config.local.php` (gerado pelo instalador).
+Para reinstalar, apague `data/installed.lock`.
 
-LIGAR O MYSQL
-1. Crie um banco (utf8mb4) e um usuário no painel da hospedagem.
-2. Preencha DB_HOST, DB_NAME, DB_USER, DB_PASS no config.php.
-3. Banco novo e vazio: importe install/schema.sql pelo phpMyAdmin.
-   Já tem vídeos importados? Importe o schema.sql SEM a parte final
-   (INSERT de categorias) e acesse /admin/migrar.php para copiar tudo.
-4. Mude DB_DRIVER para 'mysql' no config.php.
+## Painel (`seudominio.com/admin`)
+- **Importador**: link único, vários links de uma vez, ou busca por palavra-chave (Pornhub, RedTube, Eporner).
+  Funciona com XVideos, XNXX, Pornhub, xHamster, RedTube, YouPorn, SpankBang, Eporner, Tube8, TXXX e qualquer `<iframe>`.
+- **Vídeos / Categorias / Denúncias / Páginas**
+- **SEO**: verificação do Google Search Console, Bing, Yandex e Pinterest; Google Analytics 4 e Tag Manager;
+  título e descrição da página inicial (com prévia do Google); robots.txt; bloquear buscadores.
+  Sitemap automático com extensão de vídeo: `seudominio.com/sitemap.php`.
+- **Configurações**: nome do site, cor principal, e-mail, espaços de anúncio, troca de senha.
 
-LINKS BONITOS (opcional)
-- Em Apache, mude PRETTY_URLS para true no config.php:
-  /video/12/titulo-do-video em vez de video.php?id=12...
+## Links bonitos (opcional)
+Em Apache, mude `PRETTY_URLS` para `true` no `config.php` → `/video/12/titulo-do-video`.
 
-ANÚNCIOS
-- Admin > Configurações: cole o código da sua rede de anúncios adultos
-  nos espaços Topo, Abaixo do player, Lateral e Rodapé.
-
-SEGURANÇA DO CONTEÚDO
-- Todo vídeo tem botão "Denunciar". Denúncias de possível menor ou sem
-  consentimento tiram o vídeo do ar na hora até você revisar em Admin > Denúncias.
+## Segurança do conteúdo
+Todo vídeo tem botão "Denunciar". Denúncias de possível menor ou sem consentimento tiram o vídeo do ar na hora até você revisar em Admin > Denúncias.

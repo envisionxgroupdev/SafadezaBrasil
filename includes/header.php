@@ -1,9 +1,11 @@
 <?php
 /** @var string $pageTitle  @var string $pageDesc */
-$pageTitle = isset($pageTitle) ? $pageTitle . ' - ' . site_name() : site_name() . ' - ' . site_tagline();
-$pageDesc  = $pageDesc ?? site_tagline();
+$isHome = !isset($pageTitle);
+$pageTitle = $isHome ? (setting('seo_home_title', '') ?: site_name() . ' - ' . site_tagline()) : $pageTitle . ' - ' . site_name();
+$pageDesc  = $pageDesc ?? (setting('seo_home_description', '') ?: site_tagline());
+$ogImage   = $ogImage ?? setting('seo_og_image', '');
 $q = trim($_GET['q'] ?? '');
-$primary = setting('color_primary', '') ?: '#6a2fa0';
+$primary = primary_color();
 $navCats = array_slice(all_categories(), 0, 10);
 $cur = basename($_SERVER['SCRIPT_NAME']);
 $sortNow = $_GET['sort'] ?? '';
@@ -14,15 +16,22 @@ $sortNow = $_GET['sort'] ?? '';
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title><?= e($pageTitle) ?></title>
 <meta name="description" content="<?= e($pageDesc) ?>">
+<?php if ($isHome && ($kw = setting('seo_keywords', ''))): ?><meta name="keywords" content="<?= e($kw) ?>"><?php endif; ?>
+<?php if (setting('seo_noindex', '') || !empty($noindex)): ?><meta name="robots" content="noindex,follow"><?php endif; ?>
+<?= seo_head_tags() ?>
 <meta name="rating" content="adult">
 <meta name="RATING" content="RTA-5042-1996-1400-1577-RTA">
 <meta name="theme-color" content="<?= e($primary) ?>">
 <?php if (!empty($canonical)): ?><link rel="canonical" href="<?= e($canonical) ?>"><?php endif; ?>
 <?php if (!empty($ogImage)): ?><meta property="og:image" content="<?= e($ogImage) ?>"><?php endif; ?>
 <meta property="og:title" content="<?= e($pageTitle) ?>">
+<meta property="og:description" content="<?= e($pageDesc) ?>">
+<meta property="og:type" content="<?= !empty($ogType) ? e($ogType) : 'website' ?>">
+<meta name="twitter:card" content="summary_large_image">
 <meta property="og:site_name" content="<?= e(site_name()) ?>">
 <link rel="icon" href="<?= e(base_url('assets/img/favicon.svg')) ?>" type="image/svg+xml">
-<link rel="stylesheet" href="<?= e(base_url('assets/css/style.css')) ?>?v=1">
+<link rel="preload" href="<?= e(base_url('assets/fonts/montserrat.woff')) ?>" as="font" type="font/woff" crossorigin>
+<link rel="stylesheet" href="<?= e(base_url('assets/css/style.css')) ?>?v=2">
 <style>:root{--primary:<?= e($primary) ?>}</style>
 <?= setting('head_code', '') ?>
 </head>
@@ -31,7 +40,7 @@ $sortNow = $_GET['sort'] ?? '';
 <?php if (empty($_COOKIE['age_ok'])): ?>
 <div class="agegate" id="agegate">
   <div class="agegate-box">
-    <div class="logo big"><?= e(site_name()) ?></div>
+    <?= logo_html('lg') ?>
     <h2>Conteúdo adulto</h2>
     <p>Este site contém material sexualmente explícito, destinado apenas a maiores de 18 anos
        (ou da maioridade legal no seu país). Ao entrar, você confirma que tem idade legal e concorda com os
@@ -48,10 +57,10 @@ $sortNow = $_GET['sort'] ?? '';
 <header class="topbar">
   <div class="wrap topbar-inner">
     <button class="menu-btn" id="menu-btn" aria-label="Menu">☰</button>
-    <a href="<?= e(base_url()) ?>" class="logo"><?= e(site_name()) ?></a>
+    <a href="<?= e(base_url()) ?>" class="logo" aria-label="<?= e(site_name()) ?>"><?= logo_html() ?></a>
     <form class="search" action="<?= e(base_url('search.php')) ?>" method="get">
       <input type="search" name="q" value="<?= e($q) ?>" placeholder="Pesquisar vídeos..." aria-label="Pesquisar">
-      <button type="submit" aria-label="Buscar">🔍</button>
+      <button type="submit" aria-label="Buscar"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg></button>
     </form>
   </div>
   <nav class="mainnav" id="mainnav">

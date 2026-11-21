@@ -39,6 +39,59 @@ function set_setting(string $key, $value): void {
 function site_name(): string { return trim((string)setting('site_name', '')) ?: SITE_NAME; }
 function site_tagline(): string { return trim((string)setting('site_tagline', '')) ?: SITE_TAGLINE; }
 
+/** Cor principal: painel > padrão laranja */
+function primary_color(): string {
+    $c = trim((string)setting('color_primary', ''));
+    return preg_match('/^#[0-9a-f]{3,8}$/i', $c) ? $c : '#ff9000';
+}
+
+/** Logo: ícone + nome. A 1ª palavra fica branca e o resto na cor principal. */
+function logo_html(string $size = ''): string {
+    $parts = preg_split('/\s+/', trim(site_name()), 2);
+    return '<span class="brand ' . e($size) . '"><span class="brand-mark"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4.5v15l12.5-7.5z"/></svg></span>'
+         . '<span class="brand-word"><span class="b1">' . e($parts[0]) . '</span>'
+         . (isset($parts[1]) ? '<span class="b2">' . e($parts[1]) . '</span>' : '') . '</span></span>';
+}
+
+/* ---------------- SEO ---------------- */
+/** Aceita o código puro ou a tag <meta ...> inteira colada do Google/Bing */
+function seo_verify_value(string $v): string {
+    $v = trim($v);
+    if (preg_match('~content=["\']([^"\']+)["\']~i', $v, $m)) return $m[1];
+    return strip_tags($v);
+}
+function seo_head_tags(): string {
+    $h = '';
+    $verify = ['seo_google_verify' => 'google-site-verification', 'seo_bing_verify' => 'msvalidate.01',
+               'seo_yandex_verify' => 'yandex-verification', 'seo_pinterest_verify' => 'p:domain_verify'];
+    foreach ($verify as $k => $name) {
+        if ($v = seo_verify_value((string)setting($k, ''))) $h .= '<meta name="' . $name . '" content="' . e($v) . '">' . "\n";
+    }
+    $ga = trim((string)setting('seo_ga_id', ''));
+    if (preg_match('/^(G|UA|AW)-[A-Z0-9-]+$/i', $ga)) {
+        $h .= '<script async src="https://www.googletagmanager.com/gtag/js?id=' . e($ga) . '"></script>' . "\n"
+            . '<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments)}gtag("js",new Date());gtag("config",' . json_encode($ga) . ');</script>' . "\n";
+    }
+    $gtm = trim((string)setting('seo_gtm_id', ''));
+    if (preg_match('/^GTM-[A-Z0-9]+$/i', $gtm)) {
+        $h .= "<script>(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src='https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);})(window,document,'script','dataLayer'," . json_encode($gtm) . ");</script>\n";
+    }
+    return $h;
+}
+function default_robots(): string {
+    return "User-agent: *\nDisallow: /admin/\nDisallow: /api.php\nDisallow: /install.php\n\nSitemap: " . absolute_url('sitemap.php') . "\n";
+}
+function robots_content(): string {
+    if (setting('seo_noindex', '')) return "User-agent: *\nDisallow: /\n";
+    return trim((string)setting('seo_robots', '')) !== '' ? str_replace('{SITEMAP}', absolute_url('sitemap.php'), (string)setting('seo_robots')) . "\n" : default_robots();
+}
+function absolute_url(string $path = ''): string {
+    $u = base_url($path);
+    if (preg_match('~^https?://~', $u)) return $u;
+    $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') || ($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https' ? 'https' : 'http';
+    return $scheme . '://' . ($_SERVER['HTTP_HOST'] ?? 'localhost') . $u;
+}
+
 /* ---------------- Formatação ---------------- */
 function slugify(string $s): string {
     $s = iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $s) ?: $s;
@@ -154,10 +207,7 @@ function current_page(): int { return max(1, (int)($_GET['page'] ?? 1)); }
 
 /* ---------------- Dados iniciais ---------------- */
 function seed_if_empty(): void {
-    if (DB_DRIVER !== 'json') {
-        if (db()->count('admins') === 0) create_default_admin();
-        return;
-    }
+    if (DB_DRIVER !== 'json') return; // no MySQL, o instalador cria o admin e as categorias
     if (db()->count('admins') === 0) create_default_admin();
     if (db()->count('categories') === 0) {
         $cats = ['Amadores','Brasileiras','Casais','HD','Latinas','Loiras','Morenas','Ruivas','Lésbicas','Maduras','POV','Asiáticas'];

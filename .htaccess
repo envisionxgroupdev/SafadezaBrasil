@@ -7,6 +7,10 @@ DirectoryIndex index.php
   # Links bonitos (ative PRETTY_URLS no config.php)
   RewriteRule ^video/([0-9]+)(?:/([^/]*))?/?$ video.php?id=$1&s=$2 [L,QSA]
   RewriteRule ^categoria/([^/]+)/?$ category.php?c=$1 [L,QSA]
+  # SEO: robots.txt e sitemap.xml
+  RewriteCond %{REQUEST_FILENAME} !-f
+  RewriteRule ^robots\.txt$ robots.php [L]
+  RewriteRule ^sitemap\.xml$ sitemap.php [L]
 </IfModule>
 
 <FilesMatch "^(config\.php|.*\.sql|.*\.json)$">

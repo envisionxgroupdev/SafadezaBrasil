@@ -1,11 +1,7 @@
 -- ============================================================
 --  Esquema MySQL do site
---  1) Crie um banco (utf8mb4) na hospedagem
---  2) Importe este arquivo pelo phpMyAdmin
---  3) No config.php: DB_DRIVER = 'mysql' e preencha os dados
---  Já importou vídeos no modo JSON? Antes do passo 3, acesse
---  /admin/migrar.php para copiar tudo para o MySQL.
---  (Se for migrar, NÃO rode o INSERT de categorias no fim deste arquivo.)
+--  NÃO precisa importar à mão: o instalador (install.php)
+--  cria tudo sozinho. Use este arquivo só se preferir o phpMyAdmin.
 -- ============================================================
 
 SET NAMES utf8mb4;
