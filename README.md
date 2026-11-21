@@ -1,2 +1,47 @@
-# SafadezaBrasil
-SafadezaBrasil
+# Safadeza Brasil
+=================================================
+
+REQUISITOS
+- Hospedagem com PHP 8.0+ e extensão cURL (praticamente todas têm)
+- MySQL (quando for ligar o banco)
+
+COMO SUBIR
+1. Envie TODOS os arquivos desta pasta para a pasta pública da hospedagem
+   (public_html, htdocs ou www) usando o Gerenciador de Arquivos ou FTP.
+2. Dê permissão de escrita à pasta /data (755 ou 775).
+3. Acesse seudominio.com/admin
+   Usuário: admin   Senha: admin123
+4. TROQUE A SENHA em Admin > Configurações > Login do admin.
+
+NOME DO SITE
+- Está em config.php -> SITE_NAME (aparece em todo o site e no painel).
+- Também dá para trocar em Admin > Configurações, sem mexer em arquivo.
+
+IMPORTAR VÍDEOS (Admin > Importador)
+- Link único: cole o link do vídeo ou o <iframe>. Título, thumb, duração e
+  tags são buscados automaticamente. Revise e clique em Importar.
+- Em massa: cole vários links (um por linha) e clique em Iniciar.
+- Buscar e importar: pesquise por palavra-chave no Pornhub, RedTube ou
+  Eporner, selecione os vídeos e importe vários de uma vez.
+- Sites: XVideos, XNXX, Pornhub, xHamster, RedTube, YouPorn, SpankBang,
+  Eporner, Tube8, TXXX e qualquer outro site que dê código <iframe>.
+
+LIGAR O MYSQL
+1. Crie um banco (utf8mb4) e um usuário no painel da hospedagem.
+2. Preencha DB_HOST, DB_NAME, DB_USER, DB_PASS no config.php.
+3. Banco novo e vazio: importe install/schema.sql pelo phpMyAdmin.
+   Já tem vídeos importados? Importe o schema.sql SEM a parte final
+   (INSERT de categorias) e acesse /admin/migrar.php para copiar tudo.
+4. Mude DB_DRIVER para 'mysql' no config.php.
+
+LINKS BONITOS (opcional)
+- Em Apache, mude PRETTY_URLS para true no config.php:
+  /video/12/titulo-do-video em vez de video.php?id=12...
+
+ANÚNCIOS
+- Admin > Configurações: cole o código da sua rede de anúncios adultos
+  nos espaços Topo, Abaixo do player, Lateral e Rodapé.
+
+SEGURANÇA DO CONTEÚDO
+- Todo vídeo tem botão "Denunciar". Denúncias de possível menor ou sem
+  consentimento tiram o vídeo do ar na hora até você revisar em Admin > Denúncias.
