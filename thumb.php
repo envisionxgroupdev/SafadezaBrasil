@@ -28,6 +28,12 @@ $go = function (string $url, int $cache) {
 // Já está salva (outra visita baixou antes)
 if (thumb_is_local($v['thumb']) && is_file(__DIR__ . '/' . $v['thumb'])) $go(thumb_url($v['thumb']), 86400);
 
+// Vídeo antigo com thumb de outro site e que nunca foi tentado: entra na fila agora
+if (!thumbs_is_pending($v) && is_http_url($v['thumb']) && !str_starts_with((string)$v['thumbs'], 'failed:') && !str_starts_with((string)$v['thumbs'], 'sprite:')) {
+    db()->update('videos', $v['id'], ['thumbs' => thumbs_pending_value([])]);
+    $v = db()->find('videos', $v['id']);
+}
+
 // Tenta baixar agora — com limite por visitante, para ninguém usar isso para sobrecarregar o servidor
 if (thumbs_is_pending($v) && rl_hit('thumbdl:' . client_ip(), 40, 60) && rl_hit('thumbdl-video:' . $v['id'], 1, 120)) {
     thumbs_process_batch(1, (int)$v['id']);

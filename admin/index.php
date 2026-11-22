@@ -41,8 +41,10 @@ admin_header('Painel', 'index');
   <strong style="margin-right:8px">Atalhos:</strong>
   <a class="btn btn-primary" href="import.php">⬇️ Importar vídeos</a>
   <a class="btn" href="video-edit.php">＋ Adicionar manualmente</a>
+  <button type="button" class="btn" data-thumb-queue="#tq-dash" data-requeue="1">🖼️ Baixar thumbs que faltam</button>
   <a class="btn" href="categories.php">🗂️ Categorias</a>
   <a class="btn" href="settings.php">⚙️ Configurações</a>
+  <span id="tq-dash" class="muted" style="flex-basis:100%"></span>
 </div>
 
 <div class="grid2">

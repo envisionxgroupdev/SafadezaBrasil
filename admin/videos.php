@@ -75,7 +75,9 @@ admin_header('Vídeos', 'videos');
   <select name="sort">
     <?php foreach (['id DESC' => 'Mais novos', 'id ASC' => 'Mais antigos', 'views DESC' => 'Mais vistos', 'likes DESC' => 'Mais curtidos', 'title ASC' => 'Título A-Z'] as $k => $l): ?><option value="<?= $k ?>" <?= $sort === $k ? 'selected' : '' ?>><?= $l ?></option><?php endforeach; ?></select>
   <button class="btn">Filtrar</button>
-  <a class="btn btn-primary" href="video-edit.php" style="margin-left:auto">＋ Adicionar</a>
+  <button type="button" class="btn" data-thumb-queue="#tq-vid" data-requeue="1" style="margin-left:auto">🖼️ Baixar thumbs que faltam</button>
+  <a class="btn btn-primary" href="video-edit.php">＋ Adicionar</a>
+  <span id="tq-vid" class="muted" style="flex-basis:100%"></span>
 </form>
 
 <form method="post" class="card">

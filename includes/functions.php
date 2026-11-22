@@ -220,7 +220,7 @@ function paginate(int $total, int $page, int $per, callable $urlFor): string {
 function current_page(): int { return max(1, (int)($_GET['page'] ?? 1)); }
 
 /* ---------------- Atualização automática do banco ---------------- */
-const SCHEMA_VERSION = 3;
+const SCHEMA_VERSION = 4;
 function db_upgrade(): void {
     if ((int)setting('schema_version', 1) >= SCHEMA_VERSION) return;
     $d = db();
@@ -232,6 +232,8 @@ function db_upgrade(): void {
         if (!$d->hasColumn('videos', 'thumbs')) $pdo->exec("ALTER TABLE `videos` ADD `thumbs` TEXT NULL AFTER `thumb`");
         if (!$d->hasColumn('admins', 'totp_secret')) $pdo->exec("ALTER TABLE `admins` ADD `totp_secret` VARCHAR(64) NULL, ADD `totp_recovery` TEXT NULL, ADD `totp_last` INT NOT NULL DEFAULT 0");
     }
+    // v4: vídeos antigos com thumb de outro site entram na fila para baixar
+    try { thumbs_requeue_remote(); } catch (Throwable $e) {}
     set_setting('schema_version', (string)SCHEMA_VERSION);
 }
 

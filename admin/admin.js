@@ -45,7 +45,8 @@
   $$('[data-thumb-queue]').forEach(btn => btn.addEventListener('click', async () => {
     btn.disabled = true;
     if (btn.dataset.requeue) await call('thumbs_requeue', {});
-    runThumbQueue($(btn.dataset.thumbQueue));
+    await runThumbQueue($(btn.dataset.thumbQueue));
+    btn.disabled = false;
   }));
 
   // Confirmações e "selecionar todos" nas tabelas
