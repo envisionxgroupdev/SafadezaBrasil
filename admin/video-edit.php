@@ -85,7 +85,9 @@ admin_header(isset($v['id']) ? 'Editar vídeo' : 'Adicionar vídeo', 'videos');
     <div class="card">
       <?php if ($v['thumb'] || !empty($v['thumbs'])): ?>
         <img class="tthumb" style="width:100%;margin-bottom:6px" src="<?= e(thumb_url($v['thumb'])) ?>" alt="">
-        <?php if (!empty($v['thumbs'])): ?><div class="frames" style="margin-bottom:12px"><?php foreach (split_list($v['thumbs']) as $f): ?><img src="<?= e(thumb_url($f)) ?>" alt=""><?php endforeach; ?></div><?php endif; ?>
+        <?php $pv = thumb_preview($v['thumbs'] ?? ''); if (isset($pv['sprite'])): ?>
+          <img src="<?= e($pv['sprite']) ?>" alt="" style="width:100%;border-radius:4px;margin-bottom:12px" title="Quadros da prévia animada (<?= (int)$pv['n'] ?>)">
+        <?php elseif (!empty($pv['frames'])): ?><div class="frames" style="margin-bottom:12px"><?php foreach ($pv['frames'] as $f): ?><img src="<?= e($f) ?>" alt=""><?php endforeach; ?></div><?php endif; ?>
         <?php if (!thumb_is_local($v['thumb'])): ?><p class="alert err" style="font-size:12.5px">Thumb ainda não está salva no servidor. Use “Baixar/reparar thumbs” na lista de vídeos.</p><?php endif; ?>
       <?php endif; ?>
       <?php if ($v['embed_url']): ?><div class="preview" style="display:block;margin:0 0 14px"><div class="player"><iframe src="<?= e($v['embed_url']) ?>" allowfullscreen scrolling="no"></iframe></div></div><?php endif; ?>

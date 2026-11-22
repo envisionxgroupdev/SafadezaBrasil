@@ -10,7 +10,7 @@ if (!$img) {
     readfile(__DIR__ . '/../assets/img/no-thumb.svg');
     exit;
 }
-header('Content-Type: image/jpeg');
+header('Content-Type: ' . ($img[1] === 'webp' ? 'image/webp' : 'image/jpeg'));
 header('Cache-Control: private, max-age=86400');
 header('X-Content-Type-Options: nosniff');
-echo $img;
+echo $img[0];

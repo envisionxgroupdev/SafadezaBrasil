@@ -6,6 +6,30 @@ $keys = ['site_name', 'site_tagline', 'color_primary', 'contact_email', 'ad_head
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_check();
+    if (($_POST['form'] ?? '') === 'clean_thumbs') {
+        @set_time_limit(300);
+        [$n, $b] = thumbs_clean_orphans();
+        flash($n ? "$n arquivo(s) sem uso apagados — " . fmt_bytes($b) . ' liberados.' : 'Nenhuma thumb sem uso encontrada.');
+        redirect('settings.php#thumbs');
+    }
+    if (($_POST['form'] ?? '') === 'optimize_thumbs') {
+        @set_time_limit(300);
+        $done = 0; $saved = 0; $offset = 0; $start = time();
+        while (time() - $start < 240 && ($chunk = db()->query('videos', ['order' => 'id ASC', 'limit' => 200, 'offset' => $offset]))) {
+            foreach ($chunk as $v) {
+                if (time() - $start >= 240) break;
+                $before = array_sum(array_map(fn($f) => @filesize(__DIR__ . '/../' . $f) ?: 0, thumbs_files($v)));
+                if ($new = thumbs_optimize_local($v)) {
+                    db()->update('videos', $v['id'], $new);
+                    $after = array_sum(array_map(fn($f) => @filesize(__DIR__ . '/../' . $f) ?: 0, thumbs_files(array_merge($v, $new))));
+                    $done++; $saved += max(0, $before - $after);
+                }
+            }
+            $offset += 200;
+        }
+        flash($done ? "$done vídeo(s) convertidos para o formato leve — " . fmt_bytes($saved) . ' economizados.' . (time() - $start >= 240 ? ' Clique de novo para continuar.' : '') : 'Todas as thumbs já estão no formato leve.');
+        redirect('settings.php#thumbs');
+    }
     if (($_POST['form'] ?? '') === 'password') {
         $me = db()->find('admins', $_SESSION['admin_id']);
         $new = $_POST['new'] ?? '';
@@ -28,6 +52,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         foreach ($keys as $k) set_setting($k, trim($_POST[$k] ?? ''));
         set_setting('thumbs_local', !empty($_POST['thumbs_local']) ? '1' : '0');
         set_setting('thumb_frames', (string)max(0, min(6, (int)($_POST['thumb_frames'] ?? 6))));
+        set_setting('thumb_width', in_array((int)($_POST['thumb_width'] ?? 480), [400, 480, 640], true) ? (string)(int)$_POST['thumb_width'] : '480');
         flash('Configurações salvas.');
     }
     redirect('settings.php');
@@ -52,13 +77,23 @@ admin_header('Configurações', 'settings');
     <div class="field"><label>E-mail de contato</label><input type="email" name="contact_email" value="<?= e($s['contact_email']) ?>"><small>Aparece nas páginas de Contato, DMCA e Termos.</small></div>
   </div>
 
-  <h2 style="margin-top:10px">Thumbs</h2>
+  <h2 style="margin-top:10px" id="thumbs">Thumbs</h2>
   <div class="row">
     <div class="field"><label style="font-weight:500"><input type="checkbox" name="thumbs_local" value="1" <?= setting_on('thumbs_local') ? 'checked' : '' ?>> <b>Salvar as thumbs no meu servidor</b> (recomendado)</label>
       <small>Garante que as thumbs sempre aparecem. Desligado, o site usa o link do site de origem, que pode quebrar ou expirar.</small></div>
     <div class="field"><label>Quadros da prévia animada</label>
       <select name="thumb_frames"><?php foreach ([0, 3, 4, 5, 6] as $n): ?><option value="<?= $n ?>" <?= (int)setting('thumb_frames', 6) === $n ? 'selected' : '' ?>><?= $n ? "$n quadros" : 'Desligada' ?></option><?php endforeach; ?></select>
-      <small>Imagens que vão trocando quando o mouse passa por cima (ou ao rolar no celular).</small></div>
+      <small>Ficam todos juntos numa imagem só (~25 KB). Desligada economiza ainda mais.</small></div>
+    <div class="field"><label>Tamanho da thumb</label>
+      <select name="thumb_width"><?php foreach ([400 => 'Econômica (400px · ~12 KB)', 480 => 'Padrão (480px · ~18 KB)', 640 => 'Alta (640px · ~30 KB)'] as $w => $l): ?><option value="<?= $w ?>" <?= thumb_width() === $w ? 'selected' : '' ?>><?= $l ?></option><?php endforeach; ?></select>
+      <small>Vale para as próximas importações. Formato WebP (leve e aceito por todos os navegadores).</small></div>
+  </div>
+  <div class="storage-box">
+    <?php $st = thumbs_storage(); $nv = max(1, db()->count('videos')); ?>
+    <div><b><?= fmt_bytes($st['bytes']) ?></b><span>espaço usado pelas thumbs</span></div>
+    <div><b><?= number_format($st['files'], 0, ',', '.') ?></b><span>arquivos</span></div>
+    <div><b><?= $st['files'] ? fmt_bytes((int)($st['bytes'] / $nv)) : '—' ?></b><span>média por vídeo</span></div>
+    <div><b><?= fmt_bytes((int)(($st['files'] ? $st['bytes'] / $nv : 43 * 1024) * 10000)) ?></b><span>estimativa para 10 mil vídeos</span></div>
   </div>
 
   <h2 style="margin-top:10px">Anúncios (cole o código HTML da sua rede)</h2>
@@ -74,6 +109,20 @@ admin_header('Configurações', 'settings');
     <div class="field"><label>Antes do &lt;/body&gt;</label><textarea name="footer_code" rows="4"><?= e($s['footer_code']) ?></textarea></div>
   </div>
   <button class="btn btn-primary">💾 Salvar configurações</button>
+</form>
+
+<form method="post" class="card">
+  <?= csrf_field() ?><input type="hidden" name="form" value="clean_thumbs">
+  <h2>Limpar thumbs sem uso</h2>
+  <p class="muted" style="margin-top:-6px">Apaga do servidor as imagens que não pertencem a nenhum vídeo (sobras de vídeos excluídos ou importações que deram erro).</p>
+  <button class="btn" data-confirm="Apagar as thumbs que nenhum vídeo usa?">🧹 Limpar agora</button>
+</form>
+
+<form method="post" class="card">
+  <?= csrf_field() ?><input type="hidden" name="form" value="optimize_thumbs">
+  <h2>Converter thumbs antigas</h2>
+  <p class="muted" style="margin-top:-6px">Vídeos importados antes desta versão usam JPG grande e vários arquivos. Isso converte para WebP + imagem única de prévia, sem baixar nada de novo.</p>
+  <button class="btn" data-confirm="Converter as thumbs antigas agora?">⚡ Converter</button>
 </form>
 
 <form method="post" class="card" id="senha">

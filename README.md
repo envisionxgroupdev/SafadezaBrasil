@@ -29,9 +29,13 @@ Para reinstalar, apague `data/installed.lock`.
 - **Configurações**: nome do site, cor principal, e-mail, espaços de anúncio, troca de senha.
 
 ## Thumbs
-As thumbs são baixadas para `uploads/thumbs` na importação (redimensionadas para 640px), junto com até 6 quadros
-para a prévia animada (mouse por cima no PC, rolando no celular). Vídeos antigos sem thumb salva:
-Admin › Vídeos › selecione › “Baixar/reparar thumbs”.
+As thumbs são baixadas para `uploads/thumbs` na importação, num formato leve:
+- thumb principal em WebP 480px (~15–25 KB)
+- prévia animada com todos os quadros numa única imagem (~25 KB)
+
+São cerca de **45 KB e 2 arquivos por vídeo** (10 mil vídeos ≈ 450 MB).
+Em Admin › Configurações › Thumbs dá para ver o espaço usado, escolher o tamanho (econômico/padrão/alto),
+desligar a prévia, limpar thumbs sem uso e converter thumbs antigas.
 
 ## Segurança
 - Instalador com chave secreta e bloqueio automático depois de instalado
