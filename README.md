@@ -33,6 +33,9 @@ As thumbs são baixadas para `uploads/thumbs` na importação, num formato leve:
 - thumb principal em WebP 480px (~15–25 KB)
 - prévia animada com todos os quadros numa única imagem (~25 KB)
 
+A importação em massa grava o vídeo na hora e baixa as thumbs **em segundo plano**. Se alguma thumb não foi salva,
+ela é baixada na primeira visita (`thumb.php`); se o servidor não conseguir, o navegador carrega direto do site de origem.
+
 São cerca de **45 KB e 2 arquivos por vídeo** (10 mil vídeos ≈ 450 MB).
 Em Admin › Configurações › Thumbs dá para ver o espaço usado, escolher o tamanho (econômico/padrão/alto),
 desligar a prévia, limpar thumbs sem uso e converter thumbs antigas.

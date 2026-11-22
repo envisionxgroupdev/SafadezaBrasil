@@ -40,9 +40,10 @@ switch ($_POST['action'] ?? '') {
             'thumbs' => array_values(array_filter((array)json_decode($_POST['thumbs'] ?? '[]', true), 'is_string')),
         ];
         if (!is_http_url($d['embed_url'])) out(['ok' => false, 'msg' => 'URL de embed inválida']);
-        [$ok, $r] = importer_save($d, $opts);
+        [$ok, $r] = importer_save($d, $opts + ['thumbs_now' => true]);
         if ($ok) $clear();
-        out($ok ? ['ok' => true, 'id' => $r, 'url' => video_url(db()->find('videos', $r))] : ['ok' => false, 'msg' => $r]);
+        $nv = $ok ? db()->find('videos', $r) : null;
+        out($ok ? ['ok' => true, 'id' => $r, 'url' => video_url($nv), 'local_thumb' => thumb_is_local($nv['thumb']), 'thumb_msg' => $nv && !thumb_is_local($nv['thumb']) ? thumbs_problem() : ''] : ['ok' => false, 'msg' => $r]);
     }
 
     case 'bulk_one': {
@@ -68,6 +69,15 @@ switch ($_POST['action'] ?? '') {
         unset($r);
         $name = importer_search_providers()[$prov];
         out(['ok' => true, 'items' => $list, 'msg' => $list ? '' : "$name: " . $res['error'], 'blocked' => !$list && !str_contains($res['error'], 'não tem (mais)')]);
+    }
+
+    case 'thumbs_batch': {
+        @set_time_limit(90);
+        out(['ok' => true] + thumbs_process_batch(max(1, min(12, (int)($_POST['n'] ?? 6)))) + ['problem' => thumbs_problem()]);
+    }
+
+    case 'thumbs_requeue': {
+        out(['ok' => true, 'queued' => thumbs_requeue_remote(), 'pending' => thumbs_pending_count()]);
     }
 
     case 'diagnose': {

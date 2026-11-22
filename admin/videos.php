@@ -58,6 +58,12 @@ $cats = all_categories(); $catMap = category_map(); $provs = importer_providers(
 
 admin_header('Vídeos', 'videos');
 ?>
+<?php $tp = thumbs_pending_count(); $tprob = thumbs_problem(); if ($tp || $tprob): ?>
+  <div class="alert <?= $tprob ? 'err' : 'info' ?>" style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+    <span style="flex:1;min-width:220px">🖼️ <?= $tprob ? e($tprob) : '<b>' . $tp . '</b> vídeo(s) com thumb ainda não salva no servidor.' ?> <span id="tq-status"></span></span>
+    <?php if (!$tprob): ?><button class="btn btn-sm btn-primary" data-thumb-queue="#tq-status">Baixar thumbs agora</button><?php endif; ?>
+  </div>
+<?php endif; ?>
 <form class="toolbar" method="get">
   <input type="search" name="q" value="<?= e($q) ?>" placeholder="Buscar título, tag, ID...">
   <select name="status"><option value="">Todos status</option>
@@ -94,7 +100,7 @@ admin_header('Vídeos', 'videos');
     <?php foreach ($videos as $v): ?>
       <tr>
         <td class="c-check"><input type="checkbox" class="row-check" name="ids[]" value="<?= $v['id'] ?>"></td>
-        <td class="c-thumb" style="width:120px"><img class="tthumb" src="<?= e(thumb_url($v['thumb'])) ?>" referrerpolicy="no-referrer" loading="lazy" alt=""></td>
+        <td class="c-thumb" style="width:120px"><img class="tthumb" src="<?= e(video_thumb_url($v)) ?>" referrerpolicy="no-referrer" loading="lazy" alt=""></td>
         <td class="c-title"><a class="ttitle" href="video-edit.php?id=<?= $v['id'] ?>"><?= !empty($v['featured']) ? '⭐ ' : '' ?><?= e($v['title']) ?></a>
             <small class="muted"><?= fmt_duration((int)$v['duration']) ?> · #<?= $v['id'] ?> · <?= date('d/m/Y', strtotime($v['created_at'])) ?></small></td>
         <td class="hide-m"><span class="tag"><?= e($provs[$v['provider']]['name'] ?? $v['provider']) ?></span></td>

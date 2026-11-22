@@ -90,6 +90,7 @@ admin_header('Importador de vídeos', 'import');
     </div>
     <div class="progress"><span id="bulk-bar"></span></div>
     <div class="muted" id="bulk-count" style="margin-top:6px"></div>
+    <div class="muted" id="bulk-thumb-status" style="margin-top:4px"></div>
     <div class="log" id="bulk-log" style="display:none"></div>
   </form>
 </div>
@@ -117,6 +118,7 @@ admin_header('Importador de vídeos', 'import');
       <?= DB_DRIVER === 'mysql' ? 'Importa 3 vídeos ao mesmo tempo.' : '' ?></small>
     <div class="progress" id="search-progress" style="display:none"><span id="search-bar"></span></div>
     <div class="muted" id="search-status" style="margin-top:6px"></div>
+    <div class="muted" id="thumb-status" style="margin-top:6px"></div>
     <div class="log" id="search-log" style="display:none"></div>
     <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--line)">
       <button type="button" class="btn" id="diag-btn">🩺 Testar conexão com os sites</button>

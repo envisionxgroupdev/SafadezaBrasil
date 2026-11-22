@@ -88,6 +88,7 @@ admin_header('Configurações', 'settings');
       <select name="thumb_width"><?php foreach ([400 => 'Econômica (400px · ~12 KB)', 480 => 'Padrão (480px · ~18 KB)', 640 => 'Alta (640px · ~30 KB)'] as $w => $l): ?><option value="<?= $w ?>" <?= thumb_width() === $w ? 'selected' : '' ?>><?= $l ?></option><?php endforeach; ?></select>
       <small>Vale para as próximas importações. Formato WebP (leve e aceito por todos os navegadores).</small></div>
   </div>
+  <p style="margin:-4px 0 14px"><button type="button" class="btn btn-sm" data-thumb-queue="#tq2" data-requeue="1">🔄 Baixar de novo thumbs que vêm de outros sites</button> <span id="tq2" class="muted"></span></p>
   <div class="storage-box">
     <?php $st = thumbs_storage(); $nv = max(1, db()->count('videos')); ?>
     <div><b><?= fmt_bytes($st['bytes']) ?></b><span>espaço usado pelas thumbs</span></div>
