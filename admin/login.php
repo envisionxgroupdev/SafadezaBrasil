@@ -20,12 +20,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $err = 'Usuário ou senha incorretos.';
     }
 }
-$primary = setting('color_primary', '') ?: '#6a2fa0';
+$primary = primary_color();
 ?><!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex"><title>Entrar · <?= e(site_name()) ?></title>
-<link rel="stylesheet" href="<?= e(base_url('admin/admin.css')) ?>"><style>:root{--primary:<?= e($primary) ?>}</style></head>
+<link rel="stylesheet" href="<?= e(base_url('admin/admin.css')) ?>?v=2"><style>:root{--primary:<?= e($primary) ?>}</style></head>
 <body><div class="login-wrap"><form class="login" method="post">
-  <h1><?= e(site_name()) ?></h1><p class="muted" style="margin:0 0 22px">Painel administrativo</p>
+  <div style="margin-bottom:6px"><?= logo_html('lg') ?></div><p class="muted" style="margin:0 0 22px">Painel administrativo</p>
   <?php if ($err): ?><div class="alert err"><?= e($err) ?></div><?php endif; ?>
   <?= csrf_field() ?>
   <div class="field"><label>Usuário</label><input type="text" name="user" required autofocus></div>

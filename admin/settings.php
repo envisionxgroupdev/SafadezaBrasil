@@ -39,9 +39,9 @@ admin_header('Configurações', 'settings');
   <div class="row">
     <div class="field"><label>Cor principal</label>
       <div style="display:flex;gap:8px;align-items:center">
-        <input type="color" value="<?= e($s['color_primary'] ?: '#6a2fa0') ?>" oninput="this.nextElementSibling.value=this.value" style="width:50px;height:40px;border:0;background:none">
-        <input type="text" name="color_primary" value="<?= e($s['color_primary']) ?>" placeholder="#6a2fa0" style="flex:1;padding:10px;border:1px solid var(--line);border-radius:8px">
-      </div><small>Padrão: roxo #6a2fa0. Vazio = padrão.</small></div>
+        <input type="color" value="<?= e(primary_color()) ?>" oninput="this.nextElementSibling.value=this.value" style="width:50px;height:40px;border:0;background:none">
+        <input type="text" name="color_primary" value="<?= e($s['color_primary']) ?>" placeholder="#ff9000" style="flex:1;padding:10px;border:1px solid var(--line);border-radius:8px">
+      </div><small>Padrão: laranja #ff9000. Vazio = padrão.</small></div>
     <div class="field"><label>E-mail de contato</label><input type="email" name="contact_email" value="<?= e($s['contact_email']) ?>"><small>Aparece nas páginas de Contato, DMCA e Termos.</small></div>
   </div>
 

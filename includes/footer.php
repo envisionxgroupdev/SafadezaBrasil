@@ -6,7 +6,7 @@
   <div class="wrap">
     <div class="footer-top">
       <div>
-        <a href="<?= e(base_url()) ?>" class="logo"><?= e(site_name()) ?></a>
+        <a href="<?= e(base_url()) ?>" aria-label="<?= e(site_name()) ?>"><?= logo_html('sm') ?></a>
         <p class="muted"><?= e(site_tagline()) ?></p>
       </div>
       <div class="footer-links">
@@ -27,7 +27,7 @@
 </footer>
 
 <script>window.APP = { base: <?= json_encode(base_url()) ?>, csrf: <?= json_encode(csrf_token()) ?> };</script>
-<script src="<?= e(base_url('assets/js/app.js')) ?>?v=1"></script>
+<script src="<?= e(base_url('assets/js/app.js')) ?>?v=2"></script>
 <?= setting('footer_code', '') ?>
 </body>
 </html>

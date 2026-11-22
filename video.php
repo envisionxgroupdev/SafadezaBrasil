@@ -38,6 +38,7 @@ $pageTitle = $v['title'];
 $pageDesc = $v['description'] ?: $v['title'] . ' - assista grátis em ' . site_name();
 $canonical = video_url($v);
 $ogImage = $v['thumb'];
+$ogType = 'video.other';
 require __DIR__ . '/includes/header.php';
 ?>
 <div class="watch">

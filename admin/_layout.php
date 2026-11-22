@@ -8,22 +8,23 @@ function admin_header(string $title, string $active = ''): void {
         'videos'     => ['🎬', 'Vídeos', 'videos.php'],
         'categories' => ['🗂️', 'Categorias', 'categories.php'],
         'reports'    => ['⚑', 'Denúncias', 'reports.php'],
+        'seo'        => ['🔍', 'SEO', 'seo.php'],
         'pages'      => ['📄', 'Páginas', 'pages.php'],
         'settings'   => ['⚙️', 'Configurações', 'settings.php'],
     ];
     $openReports = db()->count('reports', ['where' => ['status' => 'open']]);
-    $primary = setting('color_primary', '') ?: '#6a2fa0';
+    $primary = primary_color();
     ?><!DOCTYPE html>
 <html lang="pt-BR"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex,nofollow">
 <title><?= e($title) ?> · Admin <?= e(site_name()) ?></title>
 <link rel="icon" href="<?= e(base_url('assets/img/favicon.svg')) ?>">
-<link rel="stylesheet" href="<?= e(base_url('admin/admin.css')) ?>?v=1">
+<link rel="stylesheet" href="<?= e(base_url('admin/admin.css')) ?>?v=2">
 <style>:root{--primary:<?= e($primary) ?>}</style>
 </head><body>
 <aside class="sidebar" id="sidebar">
-  <a class="brand" href="<?= e(base_url('admin/')) ?>"><?= e(site_name()) ?><small>ADMIN</small></a>
+  <a class="side-brand" href="<?= e(base_url('admin/')) ?>"><?= logo_html() ?><small>PAINEL ADMIN</small></a>
   <nav>
     <?php foreach ($menu as $k => [$ic, $lbl, $href]): ?>
       <a href="<?= e(base_url('admin/' . $href)) ?>" class="<?= $k === $active ? 'active' : '' ?>">
@@ -45,7 +46,7 @@ function admin_header(string $title, string $active = ''): void {
   </header>
   <div class="inner">
   <?php if (DB_DRIVER === 'json'): ?>
-    <div class="alert info">Modo sem banco de dados (arquivos JSON). Quando o MySQL estiver pronto, importe <code>install/schema.sql</code> e mude <code>DB_DRIVER</code> para <code>'mysql'</code> no <code>config.php</code>.</div>
+    <div class="alert info">Modo de teste sem banco (arquivos JSON). Para usar o MySQL, rode o instalador: <a href="<?= e(base_url('install.php')) ?>">install.php</a>.</div>
   <?php endif; ?>
   <?php foreach (flash() as [$t, $m]): ?><div class="alert <?= e($t) ?>"><?= e($m) ?></div><?php endforeach;
 }
@@ -54,7 +55,7 @@ function admin_footer(): void { ?>
   </div>
 </div>
 <script>window.ADMIN = { base: <?= json_encode(base_url()) ?>, csrf: <?= json_encode(csrf_token()) ?> };</script>
-<script src="<?= e(base_url('admin/admin.js')) ?>?v=1"></script>
+<script src="<?= e(base_url('admin/admin.js')) ?>?v=2"></script>
 </body></html>
 <?php }
 
