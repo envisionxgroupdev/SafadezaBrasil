@@ -58,7 +58,7 @@ function admin_footer(): void { ?>
   </div>
 </div>
 <script>window.ADMIN = { base: <?= json_encode(base_url()) ?>, csrf: <?= json_encode(csrf_token()) ?> };</script>
-<script src="<?= e(base_url('admin/admin.js')) ?>?v=3"></script>
+<script src="<?= e(base_url('admin/admin.js')) ?>?v=4"></script>
 </body></html>
 <?php }
 
