@@ -18,7 +18,6 @@ function base_url(string $path = ''): string {
 
 function redirect(string $to): void { header('Location: ' . $to); exit; }
 function now(): string { return date('Y-m-d H:i:s'); }
-function client_ip(): string { return $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0'; }
 
 /* ---------------- Configurações ---------------- */
 function setting(string $key, $default = null) {
@@ -85,11 +84,22 @@ function robots_content(): string {
     if (setting('seo_noindex', '')) return "User-agent: *\nDisallow: /\n";
     return trim((string)setting('seo_robots', '')) !== '' ? str_replace('{SITEMAP}', absolute_url('sitemap.php'), (string)setting('seo_robots')) . "\n" : default_robots();
 }
+/** URL completa (sitemap, og:image...). Usa o domínio gravado na instalação, não o que o visitante manda (evita "host header injection"). */
 function absolute_url(string $path = ''): string {
     $u = base_url($path);
     if (preg_match('~^https?://~', $u)) return $u;
-    $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') || ($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https' ? 'https' : 'http';
-    return $scheme . '://' . ($_SERVER['HTTP_HOST'] ?? 'localhost') . $u;
+    $host = site_host();
+    return (is_https() || setting('force_https', '') === '1' ? 'https' : 'http') . '://' . $host . $u;
+}
+function site_host(): string {
+    $h = strtolower((string)setting('site_host', ''));
+    if ($h !== '' && preg_match('/^[a-z0-9.-]+(:\d+)?$/', $h)) return $h;
+    $cur = strtolower($_SERVER['HTTP_HOST'] ?? 'localhost');
+    return preg_match('/^[a-z0-9.-]+(:\d+)?$/', $cur) ? $cur : 'localhost';
+}
+/** Só aceita links http:// ou https:// (bloqueia javascript:, data:, file:...) */
+function is_http_url($u): bool {
+    return is_string($u) && preg_match('~^https?://[^\s<>"\']+$~i', $u) && filter_var($u, FILTER_VALIDATE_URL) !== false;
 }
 
 /* ---------------- Formatação ---------------- */
@@ -210,7 +220,7 @@ function paginate(int $total, int $page, int $per, callable $urlFor): string {
 function current_page(): int { return max(1, (int)($_GET['page'] ?? 1)); }
 
 /* ---------------- Atualização automática do banco ---------------- */
-const SCHEMA_VERSION = 2;
+const SCHEMA_VERSION = 3;
 function db_upgrade(): void {
     if ((int)setting('schema_version', 1) >= SCHEMA_VERSION) return;
     $d = db();
@@ -220,6 +230,7 @@ function db_upgrade(): void {
             `ip` VARCHAR(64) NOT NULL, `user_agent` VARCHAR(255) NULL, `success` TINYINT(1) NOT NULL DEFAULT 0, `created_at` DATETIME NOT NULL,
             PRIMARY KEY (`id`), KEY `idx_ip_time` (`ip`,`created_at`)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
         if (!$d->hasColumn('videos', 'thumbs')) $pdo->exec("ALTER TABLE `videos` ADD `thumbs` TEXT NULL AFTER `thumb`");
+        if (!$d->hasColumn('admins', 'totp_secret')) $pdo->exec("ALTER TABLE `admins` ADD `totp_secret` VARCHAR(64) NULL, ADD `totp_recovery` TEXT NULL, ADD `totp_last` INT NOT NULL DEFAULT 0");
     }
     set_setting('schema_version', (string)SCHEMA_VERSION);
 }

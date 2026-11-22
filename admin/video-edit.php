@@ -17,7 +17,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($embed && ($p = importer_parse($embed))) $parsed = $p; else $parsed = null;
     $embedUrl = $parsed['embed_url'] ?? $embed;
     $title = trim($_POST['title'] ?? '');
-    if ($title === '' || !filter_var($embedUrl, FILTER_VALIDATE_URL)) {
+    if ($title === '' || !is_http_url($embedUrl)) {
         flash('Título e URL de embed válida são obrigatórios.', 'err');
     } else {
         $data = [
@@ -25,7 +25,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             'slug' => unique_slug('videos', trim($_POST['slug'] ?? '') ?: $title, $v['id'] ?? null),
             'description' => trim($_POST['description'] ?? ''),
             'embed_url' => $embedUrl,
-            'thumb' => $newThumb = trim($_POST['thumb'] ?? ''),
+            'thumb' => $newThumb = (function ($t) { $t = trim((string)$t);
+                return (is_http_url($t) || ($t !== '' && str_starts_with($t, THUMB_DIR . '/') && !str_contains($t, '..'))) ? $t : ''; })($_POST['thumb'] ?? ''),
             'duration' => parse_duration($_POST['duration'] ?? ''),
             'tags' => implode(', ', split_list($_POST['tags'] ?? '')),
             'models' => implode(', ', split_list($_POST['models'] ?? '')),
@@ -100,7 +101,7 @@ admin_header(isset($v['id']) ? 'Editar vídeo' : 'Adicionar vídeo', 'videos');
         <div class="field"><label>Likes</label><input type="number" name="likes" value="<?= (int)$v['likes'] ?>"></div>
         <div class="field"><label>Dislikes</label><input type="number" name="dislikes" value="<?= (int)$v['dislikes'] ?>"></div>
       </div>
-      <?php if (!empty($v['source_url'])): ?><p class="muted" style="word-break:break-all;font-size:12px">Origem: <a href="<?= e($v['source_url']) ?>" target="_blank" rel="noreferrer"><?= e($v['source_url']) ?></a></p><?php endif; ?>
+      <?php if (!empty($v['source_url']) && is_http_url($v['source_url'])): ?><p class="muted" style="word-break:break-all;font-size:12px">Origem: <a href="<?= e($v['source_url']) ?>" target="_blank" rel="noreferrer"><?= e($v['source_url']) ?></a></p><?php endif; ?>
       <div style="display:flex;gap:10px;flex-wrap:wrap">
         <button class="btn btn-primary">💾 Salvar</button>
         <?php if (isset($v['id'])): ?>

@@ -27,6 +27,7 @@ require_once __DIR__ . '/functions.php';
 require_once __DIR__ . '/thumbs.php';
 require_once __DIR__ . '/importer.php';
 require_once __DIR__ . '/security.php';
+require_once __DIR__ . '/totp.php';
 
 // Primeiro acesso: manda para o instalador
 if (REQUIRE_INSTALL && !is_installed() && !defined('IN_INSTALLER')) {

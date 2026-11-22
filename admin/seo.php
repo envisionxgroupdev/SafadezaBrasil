@@ -2,13 +2,15 @@
 require __DIR__ . '/_layout.php';
 require_admin();
 
-$keys = ['seo_google_verify', 'seo_bing_verify', 'seo_yandex_verify', 'seo_pinterest_verify', 'seo_ga_id', 'seo_gtm_id',
+$keys = ['site_host', 'seo_google_verify', 'seo_bing_verify', 'seo_yandex_verify', 'seo_pinterest_verify', 'seo_ga_id', 'seo_gtm_id',
          'seo_home_title', 'seo_home_description', 'seo_keywords', 'seo_og_image', 'seo_robots'];
 $robotsFile = __DIR__ . '/../robots.txt';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_check();
     foreach ($keys as $k) set_setting($k, trim($_POST[$k] ?? ''));
+    $h = strtolower(preg_replace('~^https?://|/.*$~i', '', trim($_POST['site_host'] ?? '')));
+    set_setting('site_host', preg_match('/^[a-z0-9.-]+(:\d+)?$/', $h) ? $h : '');
     set_setting('seo_noindex', !empty($_POST['seo_noindex']) ? '1' : '');
     // Grava o robots.txt de verdade na raiz (se a hospedagem permitir). Se não, o robots.php responde no lugar.
     $written = @file_put_contents($robotsFile, robots_content()) !== false;
@@ -44,6 +46,12 @@ admin_header('SEO e buscadores', 'seo');
 
 <form method="post">
   <?= csrf_field() ?>
+  <div class="card">
+    <h2>Domínio do site</h2>
+    <div class="field"><label>Domínio principal</label><input type="text" name="site_host" value="<?= e($s['site_host']) ?>" placeholder="<?= e($_SERVER['HTTP_HOST'] ?? 'seudominio.com') ?>">
+      <small>Usado no sitemap e nos links de compartilhamento. Preenchido na instalação; mude só se trocar de domínio.</small></div>
+  </div>
+
   <div class="card">
     <h2>Verificação de propriedade</h2>
     <p class="muted" style="margin-top:-6px">Na hora de adicionar o site, escolha o método <b>“Tag HTML”</b> / <b>“Meta tag”</b>. Pode colar a tag inteira ou só o código.</p>

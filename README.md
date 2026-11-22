@@ -38,11 +38,17 @@ Em Admin › Configurações › Thumbs dá para ver o espaço usado, escolher o
 desligar a prévia, limpar thumbs sem uso e converter thumbs antigas.
 
 ## Segurança
-- Instalador com chave secreta e bloqueio automático depois de instalado
-- Login com limite de tentativas por IP e por usuário, registro de acessos, sessão presa ao navegador e expiração em 4h
-- Proteção CSRF em todos os formulários, cabeçalhos de segurança, opção de forçar HTTPS
-- Pastas internas bloqueadas e `uploads` sem execução de código
-- **Admin › Segurança** mostra uma lista de verificações e permite desconectar todos os dispositivos
+- **Login**: verificação em duas etapas (Google Authenticator, Microsoft Authenticator, 2FAS) com códigos de recuperação;
+  5 senhas erradas em 15 min bloqueiam o IP por 15 min; 20 em 24h bloqueiam o IP no site inteiro por 24h;
+  sessão presa ao navegador, expira em 4h, botão para desconectar todos os dispositivos; todos os acessos registrados.
+- **Firewall**: bloqueia na hora tentativas de SQL injection, XSS, invasão de pastas e execução de código pela URL;
+  5 tentativas = IP bloqueado por 24h; excesso de acessos por minuto também bloqueia. Lista manual de IPs/faixas bloqueados.
+- **IP real com Cloudflare** (só confia no cabeçalho quando a conexão vem mesmo do Cloudflare).
+- Instalador com chave secreta e bloqueio automático depois de instalado.
+- CSRF em todos os formulários, cabeçalhos de segurança, forçar HTTPS, proteção SSRF no importador
+  (IP fixado e redirecionamentos conferidos), links só http/https, `uploads` sem execução de código.
+- Opção de impedir pop-ups e redirecionamentos dos players de outros sites.
+- **Admin › Segurança** mostra as verificações, eventos de ataque, IPs bloqueados e últimos acessos.
 
 ## Links bonitos (opcional)
 Em Apache, mude `PRETTY_URLS` para `true` no `config.php` → `/video/12/titulo-do-video`.

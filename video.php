@@ -44,7 +44,7 @@ require __DIR__ . '/includes/header.php';
 <div class="watch">
   <div>
     <div class="player">
-      <iframe src="<?= e($v['embed_url']) ?>" allowfullscreen allow="autoplay; fullscreen" scrolling="no" referrerpolicy="origin" loading="eager"></iframe>
+      <iframe src="<?= e($v['embed_url']) ?>" allowfullscreen allow="autoplay; fullscreen" scrolling="no" referrerpolicy="origin" loading="eager"<?= setting('player_sandbox', '') === '1' ? ' sandbox="allow-scripts allow-same-origin allow-presentation allow-forms"' : '' ?>></iframe>
     </div>
     <?php if ($ad = setting('ad_player', '')): ?><div class="ad"><?= $ad ?></div><?php endif; ?>
 

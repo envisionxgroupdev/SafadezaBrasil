@@ -96,16 +96,28 @@ admin_header('Importador de vídeos', 'import');
 
 <!-- ============ BUSCAR ============ -->
 <div class="tab" id="tab-search">
-  <form class="card" id="search-form">
+  <form class="card" id="search-form" data-workers="<?= DB_DRIVER === 'mysql' ? 3 : 1 ?>">
     <div class="row">
       <div class="field"><label>Site</label><select name="provider">
+        <option value="all">Todos (Pornhub + RedTube + Eporner)</option>
         <?php foreach (importer_search_providers() as $k => $n): ?><option value="<?= $k ?>"><?= e($n) ?></option><?php endforeach; ?></select></div>
-      <div class="field"><label>Palavra-chave</label><input type="text" name="q" placeholder="ex.: brasileira" required></div>
+      <div class="field"><label>Palavra-chave</label><input type="text" name="q" placeholder="ex.: brasileira" required maxlength="100"></div>
       <div class="field"><label>Ordenar</label><select name="order"><option value="recentes">Mais recentes</option><option value="vistos">Mais vistos</option><option value="curtidos">Mais bem avaliados</option></select></div>
-      <div class="field"><label>Página</label><input type="number" name="page" value="1" min="1"></div>
+      <div class="field"><label>Quantidade</label><select name="qty">
+        <?php foreach ([30, 60, 100, 200, 300, 500, 1000, 2000] as $n): ?><option value="<?= $n ?>" <?= $n === 100 ? 'selected' : '' ?>><?= $n ?> vídeos</option><?php endforeach; ?></select></div>
+      <div class="field"><label>Começar da página</label><input type="number" name="page" value="1" min="1" max="500"></div>
     </div>
-    <button class="btn btn-primary">🔎 Buscar</button>
-    <small class="muted" style="margin-left:10px">Usa a API pública de cada site. Clique nos vídeos para selecionar.</small>
+    <?php $commonOpts($cats); ?>
+    <div style="display:flex;gap:10px;flex-wrap:wrap">
+      <button class="btn btn-primary" name="mode" value="pick">🔎 Buscar e escolher</button>
+      <button class="btn btn-primary" name="mode" value="auto" style="background:#111;border-color:#111;color:#fff">⚡ Importar tudo automaticamente</button>
+      <button type="button" class="btn btn-danger" id="search-stop" disabled>■ Parar</button>
+    </div>
+    <small class="muted" style="display:block;margin-top:8px">“Importar tudo” busca página por página e importa até chegar na quantidade, pulando os que já existem.
+      <?= DB_DRIVER === 'mysql' ? 'Importa 3 vídeos ao mesmo tempo.' : '' ?></small>
+    <div class="progress" id="search-progress" style="display:none"><span id="search-bar"></span></div>
+    <div class="muted" id="search-status" style="margin-top:6px"></div>
+    <div class="log" id="search-log" style="display:none"></div>
   </form>
 
   <div class="card" id="search-results" style="display:none">
@@ -113,12 +125,9 @@ admin_header('Importador de vídeos', 'import');
       <strong id="search-info"></strong>
       <button type="button" class="btn btn-sm" id="search-all">Selecionar todos</button>
       <button type="button" class="btn btn-sm" id="search-none">Limpar</button>
-      <button type="button" class="btn btn-sm" id="search-next">Próxima página →</button>
+      <button type="button" class="btn btn-sm" id="search-more">Carregar mais</button>
+      <button type="button" class="btn btn-primary" id="search-import" style="margin-left:auto">⬇️ Importar selecionados (<span id="sel-count">0</span>)</button>
     </div>
-    <form id="search-opts"><?php $commonOpts($cats); ?></form>
-    <button type="button" class="btn btn-primary" id="search-import">⬇️ Importar selecionados (<span id="sel-count">0</span>)</button>
-    <div class="progress" id="search-progress" style="display:none"><span id="search-bar"></span></div>
-    <div class="muted" id="search-status" style="margin-top:6px"></div>
     <div class="rgrid" id="search-grid"></div>
   </div>
 </div>

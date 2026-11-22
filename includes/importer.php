@@ -96,7 +96,7 @@ function importer_parse(string $input): ?array {
         }
     }
     // Iframe de um site não listado: aceita o src como embed "custom"
-    if (stripos($input, '<iframe') !== false && filter_var($src, FILTER_VALIDATE_URL)) {
+    if (stripos($input, '<iframe') !== false && is_http_url($src)) {
         return ['provider' => 'custom', 'source_id' => substr(md5($src), 0, 16), 'embed_url' => $src, 'source_url' => $src];
     }
     return null;
@@ -104,20 +104,14 @@ function importer_parse(string $input): ?array {
 
 /* ---------------- HTTP ---------------- */
 function http_get(string $url, int $timeout = 15): ?string {
-    if (!function_exists('curl_init') || !url_is_public($url)) return null;
-    $ch = curl_init($url);
-    curl_setopt_array($ch, [
-        CURLOPT_RETURNTRANSFER => true, CURLOPT_FOLLOWLOCATION => true, CURLOPT_MAXREDIRS => 5,
-        CURLOPT_TIMEOUT => $timeout, CURLOPT_CONNECTTIMEOUT => 8, CURLOPT_ENCODING => '',
+    if (!function_exists('curl_init')) return null;
+    [$code, $body] = safe_curl_get($url, [
+        CURLOPT_TIMEOUT => $timeout, CURLOPT_CONNECTTIMEOUT => 8, CURLOPT_ENCODING => '', CURLOPT_MAXFILESIZE => 8 * 1024 * 1024,
         CURLOPT_USERAGENT => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36',
         CURLOPT_HTTPHEADER => ['Accept-Language: pt-BR,pt;q=0.9,en;q=0.8'],
         CURLOPT_COOKIE => 'age_verified=1; platform=pc; accessAgeDisclaimerPH=1; accessAgeDisclaimerUK=1',
-        CURLOPT_PROTOCOLS => CURLPROTO_HTTP | CURLPROTO_HTTPS, CURLOPT_REDIR_PROTOCOLS => CURLPROTO_HTTP | CURLPROTO_HTTPS,
-    ]);
-    $body = curl_exec($ch);
-    $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    curl_close($ch);
-    return ($body !== false && $code >= 200 && $code < 400) ? $body : null;
+    ], 5);
+    return ($body !== null && $code >= 200 && $code < 300) ? $body : null;
 }
 function http_json(string $url): ?array {
     $b = http_get($url);
@@ -252,7 +246,7 @@ function importer_search(string $provider, string $q, int $page = 1, string $ord
         foreach ($j['videos'] ?? [] as $w) if (!empty($w['video'])) $out[] = importer_map_redtube($w['video']) + ['provider' => 'redtube'];
     } elseif ($provider === 'eporner') {
         $ord = ['recentes' => 'latest', 'vistos' => 'most-popular', 'curtidos' => 'top-rated'][$order] ?? 'latest';
-        $j = http_json('https://www.eporner.com/api/v2/video/search/?per_page=30&thumbsize=big&format=json&order=' . $ord . '&page=' . $page . '&query=' . urlencode($q));
+        $j = http_json('https://www.eporner.com/api/v2/video/search/?per_page=100&thumbsize=big&format=json&order=' . $ord . '&page=' . $page . '&query=' . urlencode($q));
         foreach ($j['videos'] ?? [] as $v) $out[] = importer_map_eporner($v) + ['provider' => 'eporner'];
     }
     $prov = importer_providers();
@@ -272,7 +266,8 @@ function importer_exists(string $provider, string $sourceId): bool {
  * Retorna [true, id] ou [false, 'motivo'].
  */
 function importer_save(array $d, array $opts = []): array {
-    if (empty($d['embed_url']) || empty($d['provider'])) return [false, 'Embed inválido'];
+    if (empty($d['embed_url']) || empty($d['provider']) || !is_http_url($d['embed_url'])) return [false, 'Embed inválido'];
+    if (!empty($d['source_url']) && !is_http_url($d['source_url'])) $d['source_url'] = '';
     if (importer_exists($d['provider'], (string)$d['source_id'])) return [false, 'Já existe no site'];
     $title = trim($d['title'] ?? '') ?: ('Vídeo ' . ($d['source_id'] ?? ''));
     $tags = is_array($d['tags'] ?? null) ? implode(', ', $d['tags']) : (string)($d['tags'] ?? '');

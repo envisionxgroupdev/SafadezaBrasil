@@ -18,7 +18,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($name === '') flash('Informe o nome.', 'err');
         else {
             $data = ['name' => $name, 'slug' => unique_slug('categories', trim($_POST['slug'] ?? '') ?: $name, $id ?: null),
-                     'description' => trim($_POST['description'] ?? ''), 'thumb' => trim($_POST['thumb'] ?? ''), 'sort' => (int)($_POST['sort'] ?? 0)];
+                     'description' => trim($_POST['description'] ?? ''), 'thumb' => is_http_url(trim($_POST['thumb'] ?? '')) ? trim($_POST['thumb']) : '', 'sort' => (int)($_POST['sort'] ?? 0)];
             if ($id) { db()->update('categories', $id, $data); flash('Categoria salva.'); }
             else { db()->insert('categories', $data); flash('Categoria criada.'); }
         }

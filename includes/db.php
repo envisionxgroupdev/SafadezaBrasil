@@ -47,9 +47,21 @@ class JsonDriver implements DataDriver {
     private function save(string $t, array $data): void {
         $this->cache[$t] = $data;
         $f = $this->file($t);
-        $tmp = $f . '.tmp';
+        $tmp = $f . '.' . bin2hex(random_bytes(4)) . '.tmp';
         file_put_contents($tmp, json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), LOCK_EX);
         rename($tmp, $f);
+    }
+
+    /** Altera a tabela com trava exclusiva (evita perder dados com dois acessos ao mesmo tempo) */
+    private function mutate(string $t, callable $fn) {
+        $lock = fopen($this->file($t) . '.lock', 'c');
+        if ($lock) flock($lock, LOCK_EX);
+        unset($this->cache[$t]);
+        $d = $this->load($t);
+        $res = $fn($d);
+        if ($res !== false) $this->save($t, $d);
+        if ($lock) { flock($lock, LOCK_UN); fclose($lock); }
+        return $res;
     }
 
     private function filter(string $t, array $o): array {
@@ -103,33 +115,35 @@ class JsonDriver implements DataDriver {
     }
 
     public function insert(string $t, array $row): int {
-        $d = $this->load($t);
-        $id = ++$d['auto'];
-        $row = ['id' => $id] + $row;
-        $d['rows'][(string)$id] = $row;
-        $this->save($t, $d);
-        return $id;
+        return $this->mutate($t, function (&$d) use ($row) {
+            $id = ++$d['auto'];
+            $d['rows'][(string)$id] = ['id' => $id] + $row;
+            return $id;
+        });
     }
 
     public function update(string $t, $id, array $row): bool {
-        $d = $this->load($t);
-        if (!isset($d['rows'][(string)$id])) return false;
-        $d['rows'][(string)$id] = array_merge($d['rows'][(string)$id], $row, ['id' => (int)$id]);
-        $this->save($t, $d);
-        return true;
+        return (bool)$this->mutate($t, function (&$d) use ($id, $row) {
+            if (!isset($d['rows'][(string)$id])) return false;
+            $d['rows'][(string)$id] = array_merge($d['rows'][(string)$id], $row, ['id' => (int)$id]);
+            return true;
+        });
     }
 
     public function delete(string $t, $id): bool {
-        $d = $this->load($t);
-        if (!isset($d['rows'][(string)$id])) return false;
-        unset($d['rows'][(string)$id]);
-        $this->save($t, $d);
-        return true;
+        return (bool)$this->mutate($t, function (&$d) use ($id) {
+            if (!isset($d['rows'][(string)$id])) return false;
+            unset($d['rows'][(string)$id]);
+            return true;
+        });
     }
 
     public function increment(string $t, $id, string $f, int $by = 1): void {
-        $r = $this->find($t, $id);
-        if ($r) $this->update($t, $id, [$f => (int)($r[$f] ?? 0) + $by]);
+        $this->mutate($t, function (&$d) use ($id, $f, $by) {
+            if (!isset($d['rows'][(string)$id])) return false;
+            $d['rows'][(string)$id][$f] = (int)($d['rows'][(string)$id][$f] ?? 0) + $by;
+            return true;
+        });
     }
 }
 

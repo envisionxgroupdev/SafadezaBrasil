@@ -14,6 +14,7 @@ if (!$v || $v['status'] !== 'published') out(['ok' => false, 'msg' => 'Vídeo n�
 
 switch ($action) {
     case 'vote':
+        if (!rl_hit('vote:' . client_ip(), 40, 600)) out(['ok' => false, 'msg' => 'Calma! Muitos votos em pouco tempo.']);
         $type = $_POST['type'] === 'down' ? 'down' : 'up';
         $prev = $_SESSION['votes'][$id] ?? null;
         $likes = (int)$v['likes']; $dislikes = (int)$v['dislikes'];
@@ -30,11 +31,9 @@ switch ($action) {
         $reasons = ['menor' => 'Possível menor de idade', 'sem_consentimento' => 'Sem consentimento', 'direitos' => 'Direitos autorais',
                     'quebrado' => 'Vídeo não funciona', 'outro' => 'Outro'];
         $reason = array_key_exists($_POST['reason'] ?? '', $reasons) ? $_POST['reason'] : 'outro';
-        $_SESSION['reports'] = array_filter($_SESSION['reports'] ?? [], fn($t) => $t > time() - 3600);
-        if (count($_SESSION['reports']) >= 10) out(['ok' => false, 'msg' => 'Muitas denúncias. Tente mais tarde.']);
+        if (!rl_hit('report:' . client_ip(), 10, 3600)) out(['ok' => false, 'msg' => 'Muitas denúncias. Tente mais tarde.']);
         db()->insert('reports', ['video_id' => $id, 'reason' => $reason, 'details' => mb_substr(trim($_POST['details'] ?? ''), 0, 1000),
                                  'ip' => client_ip(), 'status' => 'open', 'created_at' => now()]);
-        $_SESSION['reports'][] = time();
         // Denúncias graves tiram o vídeo do ar automaticamente até você revisar
         if (in_array($reason, ['menor', 'sem_consentimento'], true)) db()->update('videos', $id, ['status' => 'review']);
         out(['ok' => true]);

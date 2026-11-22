@@ -69,6 +69,7 @@ if (!is_installed()) {
     if ($step === '1' && $_SERVER['REQUEST_METHOD'] === 'POST') {
         csrf_check();
         $inst['key_tries'] = (int)($inst['key_tries'] ?? 0) + 1;
+        if (!rl_hit('instkey:' . client_ip(), 10, 3600)) $inst['key_tries'] = 99;
         $typed = strtoupper(preg_replace('/[^A-Za-z0-9]/', '', (string)($_POST['install_key'] ?? '')));
         if ($inst['key_tries'] > 10) $errors[] = 'Muitas tentativas. Feche o navegador e tente de novo mais tarde.';
         elseif (hash_equals(str_replace('-', '', $key), $typed)) { $inst['key_ok'] = true; redirect('install.php?step=2'); }
@@ -150,7 +151,9 @@ if ($step === '3' && $_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($a = $mysql->findBy('admins', 'username', $user)) $mysql->update('admins', $a['id'], ['password_hash' => $hash]);
             else $mysql->insert('admins', ['username' => $user, 'password_hash' => $hash, 'created_at' => now()]);
             // Configurações do site
-            foreach (['site_name' => $siteName, 'site_tagline' => $inst['site_form']['site_tagline'], 'contact_email' => $inst['site_form']['contact_email']] as $k => $v) {
+            $host = strtolower((string)($_SERVER['HTTP_HOST'] ?? ''));
+            if (!preg_match('/^[a-z0-9.-]+(:\d+)?$/', $host)) $host = '';
+            foreach (['site_name' => $siteName, 'site_tagline' => $inst['site_form']['site_tagline'], 'contact_email' => $inst['site_form']['contact_email'], 'site_host' => $host] as $k => $v) {
                 $row = $mysql->findBy('settings', 'skey', $k);
                 $row ? $mysql->update('settings', $row['id'], ['svalue' => $v]) : $mysql->insert('settings', ['skey' => $k, 'svalue' => $v]);
             }
