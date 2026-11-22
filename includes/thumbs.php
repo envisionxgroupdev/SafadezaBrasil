@@ -282,21 +282,24 @@ function thumbs_slot() {
     return null;
 }
 
-function thumbs_process_batch(int $limit = 3, ?int $onlyId = null): array {
+function thumbs_process_batch(int $limit = 8, ?int $onlyId = null): array {
     if (thumbs_problem() !== '') return ['saved' => 0, 'failed' => 0, 'pending' => thumbs_pending_count(), 'writable' => thumbs_dir() !== null];
     $slot = thumbs_slot();
     if (!$slot) return ['saved' => 0, 'failed' => 0, 'pending' => thumbs_pending_count(), 'writable' => true, 'busy' => true];
     @set_time_limit(60);
     $list = $onlyId ? array_filter([db()->find('videos', $onlyId)]) : db()->query('videos', ['search' => [['thumbs'], 'remote:'], 'order' => 'id DESC', 'limit' => $limit]);
     $list = array_values(array_filter($list, 'thumbs_is_pending'));
-    $jobs = [];
-    foreach ($list as $v) $jobs[$v['id']] = ['provider' => $v['provider'], 'source_id' => $v['source_id'], 'thumb' => $v['thumb'], 'frames' => thumbs_remote_frames($v)];
-    $res = $jobs ? thumbs_store_many($jobs) : [];
-    $ok = 0; $fail = 0;
-    foreach ($res as $id => $r) {
-        if ($r['ok']) { db()->update('videos', $id, ['thumb' => $r['thumb'], 'thumbs' => $r['thumbs']]); $ok++; continue; }
-        $fail++;
-        if (!rl_hit('thumbfail:' . $id, 2, 86400)) db()->update('videos', $id, ['thumbs' => 'failed:' . time()]);  // 3ª falha: desiste
+    $ok = 0; $fail = 0; $start = microtime(true);
+    // de 2 em 2 vídeos, por no máximo ~15 segundos (menos pedidos ao servidor, pouca memória)
+    foreach (array_chunk($list, 2) as $group) {
+        if (microtime(true) - $start > 15) break;
+        $jobs = [];
+        foreach ($group as $v) $jobs[$v['id']] = ['provider' => $v['provider'], 'source_id' => $v['source_id'], 'thumb' => $v['thumb'], 'frames' => thumbs_remote_frames($v)];
+        foreach (thumbs_store_many($jobs) as $id => $r) {
+            if ($r['ok']) { db()->update('videos', $id, ['thumb' => $r['thumb'], 'thumbs' => $r['thumbs']]); $ok++; continue; }
+            $fail++;
+            if (!rl_hit('thumbfail:' . $id, 2, 86400)) db()->update('videos', $id, ['thumbs' => 'failed:' . time()]);  // 3ª falha: desiste
+        }
     }
     if ($ok) @unlink(__DIR__ . '/../data/cache_tags.json');
     flock($slot, LOCK_UN); fclose($slot);
@@ -317,11 +320,16 @@ function thumbs_requeue_remote(): int {
     return $n;
 }
 
-/** URL da thumb para mostrar no site: arquivo local, ou thumb.php (que baixa na hora / usa o link do site de origem) */
+/**
+ * URL da thumb para mostrar no site.
+ * Salva no servidor -> arquivo local. Ainda não salva -> link do site de origem (o navegador do visitante
+ * busca lá; NÃO gera pedido ao seu servidor, para não sobrecarregar a hospedagem).
+ */
 function video_thumb_url(array $v): string {
-    if (thumb_is_local($v['thumb'] ?? '')) return thumb_url($v['thumb']);
-    if (($v['thumb'] ?? '') === '' && !thumbs_is_pending($v)) return thumb_url('');
-    return base_url('thumb.php?v=' . (int)$v['id']);
+    $t = (string)($v['thumb'] ?? '');
+    if (thumb_is_local($t)) return thumb_url($t);
+    if (is_http_url($t)) return $t;
+    return thumb_url('');
 }
 function video_thumb_abs(array $v): string {
     $u = video_thumb_url($v);

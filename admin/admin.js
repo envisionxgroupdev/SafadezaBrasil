@@ -14,8 +14,9 @@
     const txt = await r.text();
     try { return JSON.parse(txt); }
     catch (e) {
+      if (r.status === 429) return { ok: false, http: 429, retry: +(r.headers.get('Retry-After') || 60), msg: 'a hospedagem pediu para ir mais devagar (429)' };
       if (/^\s*<\?php/.test(txt)) return { ok: false, msg: 'a hospedagem não está executando o PHP' };
-      if (r.status === 508 || r.status === 503) return { ok: false, msg: `a hospedagem está sobrecarregada (erro ${r.status}). Aguarde alguns minutos` };
+      if (r.status === 508 || r.status === 503) return { ok: false, http: r.status, retry: 90, msg: `a hospedagem está sobrecarregada (erro ${r.status}). Aguarde alguns minutos` };
       if (r.status === 403) return { ok: false, msg: 'acesso bloqueado pelo servidor (403)' };
       return { ok: false, msg: `resposta inesperada do servidor (HTTP ${r.status})` };
     }
@@ -49,11 +50,20 @@
     };
     show('<div class="tq">⏳ Preparando a fila de thumbs...</div>');
     while (!thumbQ.stop) {
-      const r = await call('thumbs_batch', { n: 3 });
+      const r = await call('thumbs_batch', { n: 8 });
       if (!r.ok) {
+        if (r.retry) {
+          // hospedagem pediu calma: espera e continua sozinho
+          for (let s = Math.min(300, Math.max(30, r.retry)); s > 0 && !thumbQ.stop; s--) {
+            show(`<div class="tq">⏸️ ${esc(r.msg)}. Continuando sozinho em <b>${s}s</b>... <button type="button" class="btn btn-sm tq-stop">Parar</button></div>`);
+            const b = thumbQ.el && thumbQ.el.querySelector('.tq-stop'); if (b) b.onclick = () => { thumbQ.stop = true; };
+            await pause(1000);
+          }
+          continue;
+        }
         errors++;
         if (errors >= 3) { show(`<div class="alert err">Não foi possível baixar as thumbs: ${esc(r.msg || 'erro no servidor')}. Tente de novo em alguns minutos.</div>`); break; }
-        await pause(5000); continue;
+        await pause(10000); continue;
       }
       errors = 0;
       if (r.problem) { show(`<div class="alert err">🖼️ ${esc(r.problem)}</div>`); break; }
@@ -63,7 +73,7 @@
       line(r);
       if (first && !r.pending && !r.saved && !r.failed) { show('<div class="tq">✓ Nenhuma thumb faltando.</div>'); break; }
       first = false;
-      if (r.pending > 0) { idle = 0; await pause(1500); continue; }   // pausa entre lotes: não sobrecarrega a hospedagem
+      if (r.pending > 0) { idle = 0; await pause(4000); continue; }   // pausa entre lotes: não sobrecarrega a hospedagem
       if (thumbQ.keep() && idle < 400) { idle++; await pause(3000); continue; }
       line(r, '<small style="color:var(--ok);font-weight:700">✓ Concluído</small>');
       break;
