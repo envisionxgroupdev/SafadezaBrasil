@@ -104,7 +104,7 @@ function importer_parse(string $input): ?array {
 
 /* ---------------- HTTP ---------------- */
 function http_get(string $url, int $timeout = 15): ?string {
-    if (!function_exists('curl_init')) return null;
+    if (!function_exists('curl_init') || !url_is_public($url)) return null;
     $ch = curl_init($url);
     curl_setopt_array($ch, [
         CURLOPT_RETURNTRANSFER => true, CURLOPT_FOLLOWLOCATION => true, CURLOPT_MAXREDIRS => 5,
@@ -112,6 +112,7 @@ function http_get(string $url, int $timeout = 15): ?string {
         CURLOPT_USERAGENT => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36',
         CURLOPT_HTTPHEADER => ['Accept-Language: pt-BR,pt;q=0.9,en;q=0.8'],
         CURLOPT_COOKIE => 'age_verified=1; platform=pc; accessAgeDisclaimerPH=1; accessAgeDisclaimerUK=1',
+        CURLOPT_PROTOCOLS => CURLPROTO_HTTP | CURLPROTO_HTTPS, CURLOPT_REDIR_PROTOCOLS => CURLPROTO_HTTP | CURLPROTO_HTTPS,
     ]);
     $body = curl_exec($ch);
     $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
@@ -126,7 +127,7 @@ function http_json(string $url): ?array {
 
 /* ---------------- Metadados ---------------- */
 function importer_fetch_meta(array $p): array {
-    $meta = ['title' => '', 'thumb' => '', 'duration' => 0, 'tags' => [], 'description' => ''];
+    $meta = ['title' => '', 'thumb' => '', 'thumbs' => [], 'duration' => 0, 'tags' => [], 'description' => ''];
     $api = importer_providers()[$p['provider']]['api'] ?? null;
 
     if ($api === 'pornhub') {
@@ -143,6 +144,12 @@ function importer_fetch_meta(array $p): array {
     if ($meta['title'] === '' && $p['provider'] !== 'custom') {
         $html = http_get($p['source_url']);
         if ($html) $meta = array_merge($meta, array_filter(importer_scrape_meta($html)));
+    }
+    // thumb com caminho relativo -> absoluto
+    if ($meta['thumb'] !== '' && str_starts_with($meta['thumb'], '//')) $meta['thumb'] = 'https:' . $meta['thumb'];
+    elseif ($meta['thumb'] !== '' && str_starts_with($meta['thumb'], '/')) {
+        $u = parse_url($p['source_url']);
+        $meta['thumb'] = ($u['scheme'] ?? 'https') . '://' . ($u['host'] ?? '') . $meta['thumb'];
     }
     return $meta;
 }
@@ -185,10 +192,32 @@ function importer_scrape_meta(string $html): array {
 }
 
 /* ---------------- Mapeadores das APIs ---------------- */
+/** Melhor thumb: a maior disponível (as APIs mandam várias) */
+function importer_best_thumb(array $v): string {
+    foreach (['default_thumb', 'thumb'] as $k) {
+        $t = $v[$k] ?? '';
+        if (is_array($t)) $t = $t['src'] ?? '';
+        if (is_string($t) && $t !== '') return str_starts_with($t, '//') ? 'https:' . $t : $t;
+    }
+    $f = importer_frames($v['thumbs'] ?? []);
+    return $f[0] ?? '';
+}
+/** Lista de quadros (frames) do vídeo, para a prévia animada */
+function importer_frames($list): array {
+    $out = [];
+    foreach ((array)$list as $t) {
+        $u = is_array($t) ? ($t['src'] ?? '') : (string)$t;
+        if ($u !== '') $out[] = str_starts_with($u, '//') ? 'https:' . $u : $u;
+    }
+    $out = array_values(array_unique($out));
+    // pega quadros espalhados pelo vídeo (não só os primeiros)
+    if (count($out) > 6) { $step = count($out) / 6; $pick = []; for ($i = 0; $i < 6; $i++) $pick[] = $out[(int)floor($i * $step)]; $out = $pick; }
+    return $out;
+}
 function importer_map_pornhub(array $v): array {
     return [
         'source_id' => $v['video_id'] ?? '', 'title' => html_entity_decode($v['title'] ?? '', ENT_QUOTES, 'UTF-8'),
-        'thumb' => $v['default_thumb'] ?? ($v['thumb'] ?? ''), 'duration' => parse_duration($v['duration'] ?? 0),
+        'thumb' => importer_best_thumb($v), 'thumbs' => importer_frames($v['thumbs'] ?? []), 'duration' => parse_duration($v['duration'] ?? 0),
         'tags' => array_slice(array_column($v['tags'] ?? [], 'tag_name'), 0, 25), 'description' => '',
         'source_url' => $v['url'] ?? '',
     ];
@@ -196,7 +225,7 @@ function importer_map_pornhub(array $v): array {
 function importer_map_redtube(array $v): array {
     return [
         'source_id' => (string)($v['video_id'] ?? ''), 'title' => html_entity_decode($v['title'] ?? '', ENT_QUOTES, 'UTF-8'),
-        'thumb' => $v['default_thumb'] ?? ($v['thumb'] ?? ''), 'duration' => parse_duration($v['duration'] ?? 0),
+        'thumb' => importer_best_thumb($v), 'thumbs' => importer_frames($v['thumbs'] ?? []), 'duration' => parse_duration($v['duration'] ?? 0),
         'tags' => array_slice(array_column($v['tags'] ?? [], 'tag_name'), 0, 25), 'description' => '',
         'source_url' => $v['url'] ?? '',
     ];
@@ -204,7 +233,7 @@ function importer_map_redtube(array $v): array {
 function importer_map_eporner(array $v): array {
     return [
         'source_id' => $v['id'] ?? '', 'title' => html_entity_decode($v['title'] ?? '', ENT_QUOTES, 'UTF-8'),
-        'thumb' => $v['default_thumb']['src'] ?? '', 'duration' => (int)($v['length_sec'] ?? 0),
+        'thumb' => $v['default_thumb']['src'] ?? '', 'thumbs' => importer_frames($v['thumbs'] ?? []), 'duration' => (int)($v['length_sec'] ?? 0),
         'tags' => array_slice(split_list($v['keywords'] ?? ''), 0, 25), 'description' => '',
         'source_url' => $v['url'] ?? '',
     ];
@@ -248,12 +277,14 @@ function importer_save(array $d, array $opts = []): array {
     $title = trim($d['title'] ?? '') ?: ('Vídeo ' . ($d['source_id'] ?? ''));
     $tags = is_array($d['tags'] ?? null) ? implode(', ', $d['tags']) : (string)($d['tags'] ?? '');
     $cats = $opts['categories'] ?? ($d['categories'] ?? []);
+    $frames = is_array($d['thumbs'] ?? null) ? $d['thumbs'] : split_list($d['thumbs'] ?? '');
+    $th = thumbs_store($d['provider'], (string)($d['source_id'] ?? ''), (string)($d['thumb'] ?? ''), $frames);
     if (!empty($opts['auto_categories'])) $cats = array_unique(array_merge($cats, importer_guess_categories($title . ' ' . $tags)));
     $id = db()->insert('videos', [
         'title' => mb_substr($title, 0, 250), 'slug' => unique_slug('videos', $title),
         'description' => (string)($d['description'] ?? ''), 'provider' => $d['provider'],
         'source_url' => (string)($d['source_url'] ?? ''), 'source_id' => (string)($d['source_id'] ?? ''),
-        'embed_url' => $d['embed_url'], 'thumb' => (string)($d['thumb'] ?? ''),
+        'embed_url' => $d['embed_url'], 'thumb' => $th['thumb'], 'thumbs' => $th['thumbs'],
         'duration' => (int)($d['duration'] ?? 0), 'tags' => $tags,
         'categories' => implode(',', array_map('intval', (array)$cats)), 'models' => (string)($d['models'] ?? ''),
         'views' => 0, 'likes' => 0, 'dislikes' => 0, 'featured' => !empty($d['featured']) ? 1 : 0,

@@ -42,14 +42,14 @@ admin_header('Painel', 'index');
 <div class="grid2">
   <div class="card"><h2>Mais vistos</h2>
     <table><?php foreach ($top as $v): ?>
-      <tr><td style="width:90px"><img class="tthumb" style="width:80px" src="<?= e($v['thumb']) ?>" referrerpolicy="no-referrer" alt=""></td>
+      <tr><td style="width:90px"><img class="tthumb" style="width:80px" src="<?= e(thumb_url($v['thumb'])) ?>" referrerpolicy="no-referrer" alt=""></td>
           <td><a class="ttitle" href="video-edit.php?id=<?= $v['id'] ?>"><?= e($v['title']) ?></a></td>
           <td style="text-align:right;white-space:nowrap"><b><?= fmt_views((int)$v['views']) ?></b></td></tr>
     <?php endforeach; if (!$top): ?><tr><td class="muted">Nenhum vídeo ainda.</td></tr><?php endif; ?></table>
   </div>
   <div class="card"><h2>Importados recentemente</h2>
     <table><?php foreach ($latest as $v): ?>
-      <tr><td style="width:90px"><img class="tthumb" style="width:80px" src="<?= e($v['thumb']) ?>" referrerpolicy="no-referrer" alt=""></td>
+      <tr><td style="width:90px"><img class="tthumb" style="width:80px" src="<?= e(thumb_url($v['thumb'])) ?>" referrerpolicy="no-referrer" alt=""></td>
           <td><a class="ttitle" href="video-edit.php?id=<?= $v['id'] ?>"><?= e($v['title']) ?></a><small class="muted"><?= e($prov[$v['provider']]['name'] ?? $v['provider']) ?> · <?= time_ago($v['created_at']) ?></small></td></tr>
     <?php endforeach; if (!$latest): ?><tr><td class="muted">Nenhum vídeo ainda.</td></tr><?php endif; ?></table>
   </div>

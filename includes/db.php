@@ -149,6 +149,9 @@ class MysqlDriver implements DataDriver {
         ]);
     }
 
+    public function pdo(): PDO { return $this->pdo; }
+    public function hasColumn(string $t, string $c): bool { return in_array($c, $this->cols($t), true); }
+
     private function cols(string $t): array {
         if (!isset($this->columns[$t])) {
             $this->columns[$t] = array_column($this->pdo->query("SHOW COLUMNS FROM `$t`")->fetchAll(), 'Field');

@@ -16,7 +16,7 @@ function base_url(string $path = ''): string {
     return $base . '/' . ltrim($path, '/');
 }
 
-function redirect(string $to): never { header('Location: ' . $to); exit; }
+function redirect(string $to): void { header('Location: ' . $to); exit; }
 function now(): string { return date('Y-m-d H:i:s'); }
 function client_ip(): string { return $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0'; }
 
@@ -176,8 +176,12 @@ function csrf_token(): string {
     return $_SESSION['csrf'];
 }
 function csrf_field(): string { return '<input type="hidden" name="csrf" value="' . csrf_token() . '">'; }
+function csrf_valid($token): bool {
+    $s = (string)($_SESSION['csrf'] ?? '');
+    return $s !== '' && is_string($token) && $token !== '' && hash_equals($s, $token);
+}
 function csrf_check(): void {
-    if (!hash_equals($_SESSION['csrf'] ?? '', $_POST['csrf'] ?? $_SERVER['HTTP_X_CSRF'] ?? '')) {
+    if (!csrf_valid($_POST['csrf'] ?? $_SERVER['HTTP_X_CSRF'] ?? '')) {
         http_response_code(419); exit('Sessão expirada. Volte e tente novamente.');
     }
 }
@@ -205,6 +209,21 @@ function paginate(int $total, int $page, int $per, callable $urlFor): string {
 }
 function current_page(): int { return max(1, (int)($_GET['page'] ?? 1)); }
 
+/* ---------------- Atualização automática do banco ---------------- */
+const SCHEMA_VERSION = 2;
+function db_upgrade(): void {
+    if ((int)setting('schema_version', 1) >= SCHEMA_VERSION) return;
+    $d = db();
+    if ($d instanceof MysqlDriver) {
+        $pdo = $d->pdo();
+        $pdo->exec("CREATE TABLE IF NOT EXISTS `logins` (`id` INT UNSIGNED NOT NULL AUTO_INCREMENT, `username` VARCHAR(60) NULL,
+            `ip` VARCHAR(64) NOT NULL, `user_agent` VARCHAR(255) NULL, `success` TINYINT(1) NOT NULL DEFAULT 0, `created_at` DATETIME NOT NULL,
+            PRIMARY KEY (`id`), KEY `idx_ip_time` (`ip`,`created_at`)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+        if (!$d->hasColumn('videos', 'thumbs')) $pdo->exec("ALTER TABLE `videos` ADD `thumbs` TEXT NULL AFTER `thumb`");
+    }
+    set_setting('schema_version', (string)SCHEMA_VERSION);
+}
+
 /* ---------------- Dados iniciais ---------------- */
 function seed_if_empty(): void {
     if (DB_DRIVER !== 'json') return; // no MySQL, o instalador cria o admin e as categorias
@@ -220,16 +239,20 @@ function create_default_admin(): void {
 
 /* ---------------- Card de vídeo ---------------- */
 function video_card(array $v): string {
-    $thumb = $v['thumb'] ?: base_url('assets/img/no-thumb.svg');
+    $noThumb = base_url('assets/img/no-thumb.svg');
+    $frames = array_map('thumb_url', split_list($v['thumbs'] ?? ''));
     $dur = fmt_duration((int)$v['duration']);
     $pct = rating_pct($v);
+    $hd = (int)$v['duration'] >= 0 && preg_match('/\b(hd|1080|720|4k)\b/i', $v['title'] . ' ' . $v['tags']);
     return '<article class="card">
-      <a href="' . e(video_url($v)) . '" class="thumb">
-        <img src="' . e($thumb) . '" alt="' . e($v['title']) . '" loading="lazy" referrerpolicy="no-referrer" onerror="this.src=\'' . e(base_url('assets/img/no-thumb.svg')) . '\'">
+      <a href="' . e(video_url($v)) . '" class="thumb"' . ($frames ? ' data-frames="' . e(implode('|', $frames)) . '"' : '') . '>
+        <img src="' . e(thumb_url($v['thumb'])) . '" alt="' . e($v['title']) . '" loading="lazy" decoding="async" referrerpolicy="no-referrer" onerror="this.onerror=null;this.src=\'' . e($noThumb) . '\'">
+        ' . ($hd ? '<span class="hd">HD</span>' : '') . '
         ' . ($dur ? '<span class="dur">' . $dur . '</span>' : '') . '
         ' . (!empty($v['featured']) ? '<span class="badge">Destaque</span>' : '') . '
+        ' . ($frames ? '<span class="pbar"><i></i></span>' : '') . '
       </a>
       <a href="' . e(video_url($v)) . '" class="title">' . e($v['title']) . '</a>
-      <div class="meta"><span>' . fmt_views((int)$v['views']) . ' views</span>' . ($pct ? '<span class="up">👍 ' . $pct . '%</span>' : '') . '<span>' . time_ago($v['created_at']) . '</span></div>
+      <div class="meta"><span>' . fmt_views((int)$v['views']) . ' views</span>' . ($pct ? '<span class="up">' . $pct . '%</span>' : '') . '<span class="ago">' . time_ago($v['created_at']) . '</span></div>
     </article>';
 }

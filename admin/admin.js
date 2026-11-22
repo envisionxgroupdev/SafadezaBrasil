@@ -1,6 +1,7 @@
 (function () {
   const $ = (s, c = document) => c.querySelector(s);
   const $$ = (s, c = document) => [...c.querySelectorAll(s)];
+  const proxy = (u, p) => u ? window.ADMIN.base + 'admin/thumb.php?p=' + encodeURIComponent(p || '') + '&u=' + encodeURIComponent(u) : window.ADMIN.base + 'assets/img/no-thumb.svg';
   const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
   async function call(action, data) {
@@ -50,16 +51,18 @@
       form.tags.value = (d.tags || []).join(', ');
       $$('input[name="categories[]"]', form).forEach(c => c.checked = (d.suggested || []).includes(+c.value));
       $('#single-player').src = d.embed_url;
-      $('#single-thumbprev').src = d.thumb || '';
-      $('#single-thumbprev').style.display = d.thumb ? 'block' : 'none';
+      form.thumbs.value = JSON.stringify(d.thumbs || []);
+      $('#single-thumbprev').src = proxy(d.thumb, d.provider);
+      $('#single-frames').innerHTML = (d.thumbs || []).map(f => `<img src="${esc(proxy(f, d.provider))}" alt="">`).join('');
       $('#single-src').textContent = d.provider_name + ' · ID ' + d.source_id;
       form.style.display = 'block';
       if (d.exists) show('⚠ Este vídeo já está no site.', 'err');
       else if (!d.title) show('Não consegui ler os dados automaticamente — preencha o título e a thumb manualmente.', 'info');
+      else if (!d.thumb) show('O site de origem não informou a thumb. Cole a URL de uma imagem no campo Thumbnail.', 'info');
     };
     sBtn.addEventListener('click', fetchIt);
     $('#single-input').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); fetchIt(); } });
-    form.thumb.addEventListener('input', () => { $('#single-thumbprev').src = form.thumb.value; $('#single-thumbprev').style.display = 'block'; });
+    form.thumb.addEventListener('change', () => { $('#single-thumbprev').src = proxy(form.thumb.value, form.provider.value); });
 
     form.addEventListener('submit', async e => {
       e.preventDefault();
@@ -127,7 +130,8 @@
       grid.innerHTML = items.length ? items.map((it, i) => `
         <div class="ritem ${it.exists ? 'exists' : ''}" data-i="${i}" title="${it.exists ? 'Já está no site' : ''}">
           <span class="rc"></span>${it.duration_fmt ? `<span class="rd">${esc(it.duration_fmt)}</span>` : ''}
-          <img src="${esc(it.thumb)}" referrerpolicy="no-referrer" loading="lazy" alt="">
+          <img src="${esc(proxy(it.thumb, it.provider))}" loading="lazy" alt="" onerror="this.src='${esc(proxy('', ''))}'">
+          ${(it.thumbs || []).length ? `<span class="rf">${it.thumbs.length} quadros</span>` : ''}
           <div class="rt">${esc(it.title)}</div>
         </div>`).join('') : `<div class="alert info">${esc(r.msg)}</div>`;
       count();
@@ -138,17 +142,25 @@
     $('#search-none').addEventListener('click', () => { $$('.ritem', grid).forEach(i => i.classList.remove('sel')); count(); });
     $('#search-next').addEventListener('click', () => { sForm.page.value = +sForm.page.value + 1; run(); });
     $('#search-import').addEventListener('click', async () => {
-      const sel = $$('.ritem.sel', grid).map(el => items[+el.dataset.i]);
-      if (!sel.length) return alert('Selecione pelo menos um vídeo.');
+      const els = $$('.ritem.sel', grid);
+      if (!els.length) return alert('Selecione pelo menos um vídeo.');
       const btn = $('#search-import'); btn.disabled = true;
-      const fd = optsFrom($('#search-opts'));
-      fd.append('items', JSON.stringify(sel));
-      const r = await call('save_many', fd);
+      $('#search-progress').style.display = 'block';
+      let ok = 0, skip = 0, err = 0, noThumb = 0;
+      for (let i = 0; i < els.length; i++) {
+        const el = els[i];
+        const fd = optsFrom($('#search-opts'));
+        fd.append('item', JSON.stringify(items[+el.dataset.i]));
+        const r = await call('save_one', fd);
+        if (r.status === 'ok') { ok++; if (!r.local_thumb) noThumb++; el.classList.remove('sel'); el.classList.add('exists'); }
+        else if (r.status === 'skip') { skip++; el.classList.remove('sel'); el.classList.add('exists'); }
+        else err++;
+        $('#search-bar').style.width = ((i + 1) / els.length * 100) + '%';
+        $('#search-status').textContent = `${i + 1}/${els.length} · ${ok} importados · ${skip} já existiam · ${err} erros` + (noThumb ? ` · ${noThumb} sem thumb salva` : '');
+        count();
+      }
       btn.disabled = false;
-      if (!r.ok) return alert(r.msg);
-      alert(`${r.done} importados · ${r.skip} já existiam · ${r.err} erros`);
-      $$('.ritem.sel', grid).forEach(el => { el.classList.remove('sel'); el.classList.add('exists'); });
-      count();
+      $('#search-status').textContent += ' — concluído';
     });
   }
 })();

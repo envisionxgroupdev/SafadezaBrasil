@@ -11,6 +11,7 @@ Site de vídeos adultos (+18) estilo tube, em PHP + MySQL, com painel admin, imp
 2. No painel da hospedagem, crie um **banco MySQL** e um **usuário** com senha, e adicione o usuário ao banco com **todos os privilégios**.
 3. Acesse `seudominio.com` — o **instalador** abre sozinho. Ele:
    - confere o servidor,
+   - pede a **chave de instalação** (abra `data/chave-instalacao.txt` no Gerenciador de Arquivos) — assim ninguém instala no seu lugar,
    - conecta no banco e cria as tabelas,
    - pede o nome do site e cria o seu login de admin.
 
@@ -26,6 +27,18 @@ Para reinstalar, apague `data/installed.lock`.
   título e descrição da página inicial (com prévia do Google); robots.txt; bloquear buscadores.
   Sitemap automático com extensão de vídeo: `seudominio.com/sitemap.php`.
 - **Configurações**: nome do site, cor principal, e-mail, espaços de anúncio, troca de senha.
+
+## Thumbs
+As thumbs são baixadas para `uploads/thumbs` na importação (redimensionadas para 640px), junto com até 6 quadros
+para a prévia animada (mouse por cima no PC, rolando no celular). Vídeos antigos sem thumb salva:
+Admin › Vídeos › selecione › “Baixar/reparar thumbs”.
+
+## Segurança
+- Instalador com chave secreta e bloqueio automático depois de instalado
+- Login com limite de tentativas por IP e por usuário, registro de acessos, sessão presa ao navegador e expiração em 4h
+- Proteção CSRF em todos os formulários, cabeçalhos de segurança, opção de forçar HTTPS
+- Pastas internas bloqueadas e `uploads` sem execução de código
+- **Admin › Segurança** mostra uma lista de verificações e permite desconectar todos os dispositivos
 
 ## Links bonitos (opcional)
 Em Apache, mude `PRETTY_URLS` para `true` no `config.php` → `/video/12/titulo-do-video`.
