@@ -4,6 +4,14 @@ date_default_timezone_set(TIMEZONE);
 error_reporting(DEBUG ? E_ALL : 0);
 ini_set('display_errors', DEBUG ? '1' : '0');
 ini_set('expose_php', '0');
+// Diz sempre ao navegador que é uma PÁGINA (se a hospedagem estiver mal configurada, o navegador baixaria o .php como arquivo).
+// Páginas que devolvem outra coisa (JSON, imagem, XML) trocam esse cabeçalho depois.
+if (PHP_SAPI !== 'cli' && !headers_sent()) {
+    ini_set('default_mimetype', 'text/html');
+    ini_set('default_charset', 'UTF-8');
+    header('Content-Type: text/html; charset=UTF-8');
+    header('Content-Disposition: inline');
+}
 
 define('DATA_DIR', realpath(__DIR__ . '/../data') ?: __DIR__ . '/../data');
 function is_installed(): bool { return is_file(DATA_DIR . '/installed.lock'); }
