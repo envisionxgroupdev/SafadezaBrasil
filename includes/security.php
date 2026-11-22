@@ -170,7 +170,7 @@ function firewall(): void {
         }
     }
     // Excesso de acessos (robô/derrubar o site): mais de 600 páginas por minuto do mesmo IP
-    if (!rl_hit('req:' . $ip, 600, 60)) { ip_ban($ip, 3600, 'excesso de acessos por minuto'); firewall_block(429); }
+    if (basename((string)($_SERVER['SCRIPT_NAME'] ?? '')) !== 'thumb.php' && !rl_hit('req:' . $ip, 600, 60)) { ip_ban($ip, 3600, 'excesso de acessos por minuto'); firewall_block(429); }
 }
 
 /** Registro de eventos de segurança (últimos 300) */
@@ -318,6 +318,7 @@ function security_checks(): array {
     $code = http_status_of(absolute_url('data/installed.lock'));
     $c[] = ['Pasta de dados protegida', in_array($code, [401, 403, 404], true) ? 'ok' : ($code === 0 ? 'warn' : 'bad'),
         in_array($code, [401, 403, 404], true) ? 'Arquivos internos não podem ser baixados.' : ($code === 0 ? 'Não foi possível testar daqui.' : 'ATENÇÃO: a pasta data está acessível pela internet (código ' . $code . '). Confira se o .htaccess foi enviado.')];
+    $c[] = ['Pasta de thumbs com permissão de escrita', thumbs_dir() !== null ? 'ok' : 'bad', thumbs_dir() !== null ? 'As thumbs podem ser salvas.' : 'Sem permissão: as thumbs não são salvas. Dê permissão 755 às pastas uploads e uploads/thumbs.'];
     $c[] = ['Pasta de thumbs sem execução de código', is_file($root . '/uploads/.htaccess') ? 'ok' : 'bad', is_file($root . '/uploads/.htaccess') ? 'Arquivos .php não rodam em /uploads.' : 'Falta o arquivo uploads/.htaccess.'];
     $c[] = ['Erros do PHP escondidos', (!DEBUG && !ini_get('display_errors')) ? 'ok' : 'bad', !DEBUG ? 'Visitantes não veem mensagens de erro.' : 'DEBUG está ligado no config.php. Desligue.'];
     $c[] = ['Versão do PHP', version_compare(PHP_VERSION, '8.1', '>=') ? 'ok' : 'warn', 'PHP ' . PHP_VERSION . (version_compare(PHP_VERSION, '8.1', '>=') ? '' : ' — atualize para 8.1 ou superior no painel da hospedagem.')];

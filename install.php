@@ -85,6 +85,8 @@ $checks = [
     ['Extensão cURL (importador)', extension_loaded('curl'), 'Ative "curl" nas extensões do PHP.'],
     ['Extensão mbstring', extension_loaded('mbstring'), 'Ative "mbstring" nas extensões do PHP.'],
     ['Pasta /data com permissão de escrita', is_dir($dataDir) && is_writable($dataDir), 'Dê permissão 755 (ou 775) à pasta "data" pelo Gerenciador de Arquivos.'],
+    ['Pasta /uploads/thumbs com permissão de escrita', (is_dir(__DIR__ . '/uploads/thumbs') || @mkdir(__DIR__ . '/uploads/thumbs', 0755, true)) && is_writable(__DIR__ . '/uploads/thumbs'), 'Dê permissão 755 (ou 775) às pastas "uploads" e "uploads/thumbs" pelo Gerenciador de Arquivos.'],
+    ['Extensão GD (imagens)', function_exists('imagecreatefromstring'), 'Ative "gd" nas extensões do PHP da hospedagem (necessária para as thumbs).'],
     ['Arquivo install/schema.sql', is_file(__DIR__ . '/install/schema.sql'), 'Envie a pasta "install" completa.'],
 ];
 $checksOk = !in_array(false, array_column($checks, 1), true);

@@ -40,7 +40,7 @@ $videos = list_videos(['order' => 'id ASC', 'limit' => PER_SITEMAP, 'offset' => 
 echo '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:video="http://www.google.com/schemas/sitemap-video/1.1">' . "\n";
 foreach ($videos as $v) {
     echo '<url><loc>' . $x($abs(video_url($v))) . '</loc><lastmod>' . date('Y-m-d', strtotime($v['created_at'])) . '</lastmod>';
-    if ($v['thumb']) {
+    if ($v['thumb'] && thumb_is_local($v['thumb'])) {
         echo '<video:video>'
            . '<video:thumbnail_loc>' . $x(thumb_abs($v['thumb'])) . '</video:thumbnail_loc>'
            . '<video:title>' . $x(mb_substr($v['title'], 0, 100)) . '</video:title>'

@@ -21,6 +21,33 @@
     return fd;
   };
 
+  /* ========== FILA DE THUMBS (baixa em segundo plano) ========== */
+  const thumbQ = { running: false, ok: 0, fail: 0, el: null, keep: () => false };
+  window.runThumbQueue = async (el, keepAlive) => {
+    if (el) thumbQ.el = el;
+    if (keepAlive) thumbQ.keep = keepAlive;
+    if (thumbQ.running) return;
+    thumbQ.running = true;
+    let idle = 0;
+    const show = (r, extra = '') => { if (thumbQ.el) thumbQ.el.innerHTML = `🖼️ Thumbs: <b>${thumbQ.ok}</b> salvas` + (thumbQ.fail ? ` · ${thumbQ.fail} tentativas falharam` : '') + (r ? ` · <b>${r.pending}</b> na fila` : '') + extra; };
+    while (true) {
+      const r = await call('thumbs_batch', { n: 6 });
+      if (!r.ok) { show(null, ` · <span style="color:var(--err)">${esc(r.msg || 'erro')}</span>`); break; }
+      thumbQ.ok += +r.saved || 0; thumbQ.fail += +r.failed || 0;
+      if (r.problem) { show(r, `<div class="alert err" style="margin-top:8px">${esc(r.problem)}</div>`); break; }
+      show(r);
+      if (r.pending > 0) { idle = 0; continue; }
+      if (thumbQ.keep() && idle < 600) { idle++; await new Promise(res => setTimeout(res, 1500)); continue; }
+      break;
+    }
+    thumbQ.running = false;
+  };
+  $$('[data-thumb-queue]').forEach(btn => btn.addEventListener('click', async () => {
+    btn.disabled = true;
+    if (btn.dataset.requeue) await call('thumbs_requeue', {});
+    runThumbQueue($(btn.dataset.thumbQueue));
+  }));
+
   // Confirmações e "selecionar todos" nas tabelas
   $$('[data-confirm]').forEach(el => el.addEventListener('click', e => { if (!confirm(el.dataset.confirm)) e.preventDefault(); }));
   const checkAll = $('#check-all');
@@ -71,7 +98,8 @@
       const r = await call('save', fd);
       btn.disabled = false;
       if (r.ok) {
-        show(`✓ Vídeo importado! <a href="${esc(r.url)}" target="_blank">Ver no site</a> · <a href="video-edit.php?id=${r.id}">Editar</a>`, 'ok');
+        show(`✓ Vídeo importado! <a href="${esc(r.url)}" target="_blank">Ver no site</a> · <a href="video-edit.php?id=${r.id}">Editar</a>` +
+          (r.local_thumb ? '' : `<br><small>⚠ A thumb não foi salva no servidor${r.thumb_msg ? ': ' + esc(r.thumb_msg) : ' (o site de origem não deixou baixar). Ela será carregada direto do site de origem.'}</small>`), r.local_thumb ? 'ok' : 'info');
         form.style.display = 'none'; $('#single-player').src = 'about:blank'; $('#single-input').value = ''; $('#single-input').focus();
       } else show(esc(r.msg), 'err');
     });
@@ -102,7 +130,7 @@
         if (bForm.no_meta.checked) fd.append('no_meta', '1');
         const r = await call('bulk_one', fd);
         const short = uniq[i].length > 70 ? uniq[i].slice(0, 70) + '…' : uniq[i];
-        if (r.status === 'ok') { ok++; line('ok', `✓ ${r.msg}`); }
+        if (r.status === 'ok') { ok++; line('ok', `✓ ${r.msg}`); runThumbQueue($('#bulk-thumb-status'), () => !$('#bulk-start').disabled ? false : true); }
         else if (r.status === 'skip') { skip++; line('skip', `↷ ${short} — ${r.msg}`); }
         else { err++; line('err', `✗ ${short} — ${r.msg || 'erro'}`); }
         $('#bulk-bar').style.width = ((i + 1) / uniq.length * 100) + '%';
@@ -180,6 +208,7 @@
 
     /* ---- Importação com vários "trabalhadores" ao mesmo tempo ---- */
     const importQueue = async (queue, total, label, keepFetching) => {
+      runThumbQueue($('#thumb-status'), () => busy);
       const workers = Math.max(1, +sForm.dataset.workers || 1);
       let ok = 0, skip = 0, err = 0, noThumb = 0, processed = 0;
       const show = () => { status(`${label}: ${ok} importados · ${skip} já existiam · ${err} erros${noThumb ? ` · ${noThumb} sem thumb` : ''}`); bar((ok + (keepFetching ? 0 : skip + err)) / total * 100); };
@@ -196,7 +225,7 @@
           const r = await call('save_one', fd);
           processed++;
           const el = grid.querySelector(`.ritem[data-i="${it._i}"]`);
-          if (r.status === 'ok') { ok++; if (!r.local_thumb) noThumb++; line('ok', '✓ ' + it.title); }
+          if (r.status === 'ok') { ok++; line('ok', '✓ ' + it.title); }
           else if (r.status === 'skip') skip++;
           else { err++; line('err', '✗ ' + it.title + ' — ' + (r.msg || 'erro')); if (/login|sessão/i.test(r.msg || '')) stop = true; }
           it.exists = true;
@@ -240,9 +269,11 @@
       diagBtn.disabled = false; diagBtn.textContent = '🩺 Testar conexão com os sites';
       if (!r.ok) { out.innerHTML = `<div class="alert err">${esc(r.msg || 'Erro')}</div>`; return; }
       const sv = r.server;
-      out.innerHTML = `<p class="muted" style="margin:10px 0">Servidor: <b>${esc(sv.country || 'país desconhecido')}</b> · IP ${esc(sv.ip || '?')} · PHP ${esc(sv.php)} · cURL ${esc(sv.curl)} · DNS ${esc(sv.dns)}</p>
-        <div class="table-wrap"><table><thead><tr><th>Site</th><th>Resultado</th><th>Detalhe</th></tr></thead><tbody>` +
+      out.innerHTML = `<p class="muted" style="margin:10px 0">Servidor: <b>${esc(sv.country || 'país desconhecido')}</b> · IP ${esc(sv.ip || '?')} · PHP ${esc(sv.php)} · cURL ${esc(sv.curl)} · DNS ${esc(sv.dns)} · Imagens (GD): ${esc(sv.gd)} · Pasta das thumbs: ${esc(sv.folder)}</p>` +
+        (sv.problem ? `<div class="alert err">🖼️ ${esc(sv.problem)}</div>` : '') +
+        `<div class="table-wrap"><table><thead><tr><th>Site</th><th>Busca</th><th>Download da thumb</th><th>Detalhe</th></tr></thead><tbody>` +
         r.sites.map(s => `<tr><td><b>${esc(s.site)}</b></td><td>${s.ok ? `<span class="tag published">✓ ${s.count} vídeos</span>` : '<span class="tag open">✗ não funcionou</span>'}</td>
+          <td>${s.thumb_ok === null ? '—' : s.thumb_ok ? `<span class="tag published">✓ ${esc(s.thumb_msg)}</span>` : `<span class="tag open">✗</span> <small>${esc(s.thumb_msg)}</small>`}</td>
           <td><small>${s.ok ? `Respondeu em ${s.time}s` + (s.thumb ? ` · <a href="#" data-thumb="${esc(s.thumb)}" data-p="${esc(s.site.toLowerCase())}">ver thumb</a>` : '') : esc(s.msg) + (s.http && !/HTTP/.test(s.msg) ? ` (HTTP ${s.http})` : '')}</small></td></tr>`).join('') +
         `</tbody></table></div>` + (r.sites.some(s => s.ok) ? '<p class="muted">Use os sites que funcionaram (ou “Todos”: os que não respondem são pulados).</p>'
         : '<div class="alert err">Nenhum site respondeu ao seu servidor. Envie esta tela para o suporte da hospedagem e pergunte se conexões de saída (cURL/HTTPS) estão liberadas.</div>');

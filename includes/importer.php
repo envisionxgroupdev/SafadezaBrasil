@@ -341,6 +341,9 @@ function importer_diagnose(): array {
         'php' => PHP_VERSION, 'curl' => function_exists('curl_version') ? (curl_version()['version'] . ' / ' . (curl_version()['ssl_version'] ?? '')) : 'NÃO INSTALADO',
         'dns' => function_exists('gethostbynamel') ? (host_ips('www.eporner.com') ? 'ok' : 'não resolve') : 'gethostbynamel desativado',
         'ip' => '', 'country' => '',
+        'gd' => function_exists('imagecreatefromstring') ? ('ok' . (function_exists('imagewebp') ? ' (WebP)' : ' (sem WebP: usa JPG)')) : 'NÃO ATIVO',
+        'folder' => thumbs_dir() !== null ? 'ok' : 'SEM PERMISSÃO',
+        'problem' => thumbs_problem(),
     ], 'sites' => []];
     [$c, $b] = safe_curl_get('https://ipinfo.io/json', [CURLOPT_TIMEOUT => 8]);
     if ($c === 200 && ($j = json_decode((string)$b, true))) { $res['server']['ip'] = $j['ip'] ?? ''; $res['server']['country'] = trim(($j['country'] ?? '') . ' ' . ($j['city'] ?? '')); }
@@ -348,9 +351,15 @@ function importer_diagnose(): array {
         $t = microtime(true);
         $r = importer_search_full($k, 'amateur', 1, 'recentes');
         $i = http_last();
+        $thumbOk = null; $thumbMsg = '';
+        if (!empty($r['items'][0]['thumb'])) {
+            [$tc, $tb] = safe_curl_get($r['items'][0]['thumb'], img_curl_opts(provider_referer($k)) + [CURLOPT_TIMEOUT => 12], 3);
+            $thumbOk = $tc === 200 && is_string($tb) && img_open($tb) !== null;
+            $thumbMsg = $thumbOk ? round(strlen($tb) / 1024) . ' KB' : http_explain(http_last(), $tb, false);
+        }
         $res['sites'][] = ['site' => $name, 'ok' => count($r['items']) > 0, 'count' => count($r['items']),
             'http' => (int)($i['code'] ?? 0), 'time' => round(microtime(true) - $t, 1), 'msg' => $r['error'],
-            'thumb' => $r['items'][0]['thumb'] ?? ''];
+            'thumb' => $r['items'][0]['thumb'] ?? '', 'thumb_ok' => $thumbOk, 'thumb_msg' => $thumbMsg];
     }
     return $res;
 }
@@ -371,7 +380,13 @@ function importer_save(array $d, array $opts = []): array {
     $tags = is_array($d['tags'] ?? null) ? implode(', ', $d['tags']) : (string)($d['tags'] ?? '');
     $cats = $opts['categories'] ?? ($d['categories'] ?? []);
     $frames = is_array($d['thumbs'] ?? null) ? $d['thumbs'] : split_list($d['thumbs'] ?? '');
-    $th = thumbs_store($d['provider'], (string)($d['source_id'] ?? ''), (string)($d['thumb'] ?? ''), $frames);
+    if (!empty($opts['thumbs_now'])) {
+        $th = thumbs_store($d['provider'], (string)($d['source_id'] ?? ''), (string)($d['thumb'] ?? ''), $frames);
+    } else {
+        // Importação rápida: grava o vídeo já e baixa as thumbs em segundo plano
+        [$t0, $f0] = thumbs_clean_list((string)($d['thumb'] ?? ''), $frames);
+        $th = ['thumb' => $t0, 'thumbs' => ($t0 !== '' || $f0) && setting_on('thumbs_local') ? thumbs_pending_value($f0) : ''];
+    }
     if (!empty($opts['auto_categories'])) $cats = array_unique(array_merge($cats, importer_guess_categories($title . ' ' . $tags)));
     $id = db()->insert('videos', [
         'title' => mb_substr($title, 0, 250), 'slug' => unique_slug('videos', $title),

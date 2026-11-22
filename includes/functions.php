@@ -259,7 +259,7 @@ function video_card(array $v): string {
     $hd = (int)$v['duration'] >= 0 && preg_match('/\b(hd|1080|720|4k)\b/i', $v['title'] . ' ' . $v['tags']);
     return '<article class="card">
       <a href="' . e(video_url($v)) . '" class="thumb"' . $attr . '>
-        <img src="' . e(thumb_url($v['thumb'])) . '" alt="' . e($v['title']) . '" loading="lazy" decoding="async" referrerpolicy="no-referrer" onerror="this.onerror=null;this.src=\'' . e($noThumb) . '\'">
+        <img src="' . e(video_thumb_url($v)) . '" alt="' . e($v['title']) . '" loading="lazy" decoding="async" referrerpolicy="no-referrer" onerror="this.onerror=null;this.src=\'' . e($noThumb) . '\'">
         ' . ($hd ? '<span class="hd">HD</span>' : '') . '
         ' . ($dur ? '<span class="dur">' . $dur . '</span>' : '') . '
         ' . (!empty($v['featured']) ? '<span class="badge">Destaque</span>' : '') . '

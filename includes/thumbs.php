@@ -157,6 +157,7 @@ function img_curl_opts(string $referer): array {
 function fetch_images(array $urls, string $referer): array {
     if (!function_exists('curl_multi_init')) return [];
     $mh = curl_multi_init(); $hs = []; $redirects = []; $pins = [];
+    if (defined('CURLMOPT_MAX_TOTAL_CONNECTIONS')) { curl_multi_setopt($mh, CURLMOPT_MAX_TOTAL_CONNECTIONS, 24); curl_multi_setopt($mh, CURLMOPT_MAX_HOST_CONNECTIONS, 8); }
     foreach ($urls as $i => $u) {
         if (!is_string($u)) continue;
         if (str_starts_with($u, '//')) $u = 'https:' . $u;
@@ -196,31 +197,115 @@ function thumb_fetch(string $url, string $referer = ''): ?array {
 }
 
 /* ---------------- Salvar ---------------- */
-/**
- * Baixa a thumb principal + quadros e salva no formato leve.
- * Retorna ['thumb' => caminho, 'thumbs' => 'sprite:caminho:N'] (mantém a URL remota se falhar).
- */
-function thumbs_store(string $provider, string $sourceId, string $thumb, array $frames = []): array {
+/** Pasta onde as thumbs são gravadas (cria se precisar). Retorna o caminho relativo ou null se não der para gravar. */
+function thumbs_dir(): ?string {
+    $dir = THUMB_DIR . '/' . date('Ym');
+    $abs = __DIR__ . '/../' . $dir;
+    if (!is_dir($abs)) @mkdir($abs, 0755, true);
+    return (is_dir($abs) && is_writable($abs)) ? $dir : null;
+}
+function thumbs_clean_list(string $thumb, array $frames): array {
     $thumb = trim($thumb);
     if ($thumb !== '' && !is_http_url($thumb) && !str_starts_with($thumb, '//')) $thumb = '';
-    $maxFrames = max(0, min(6, (int)setting('thumb_frames', 6)));
-    $frames = array_slice(array_values(array_unique(array_filter($frames, fn($f) => is_string($f) && $f !== '' && $f !== $thumb))), 0, $maxFrames);
-    if (!setting_on('thumbs_local')) return ['thumb' => $thumb, 'thumbs' => ''];
+    $max = max(0, min(6, (int)setting('thumb_frames', 6)));
+    $frames = array_slice(array_values(array_unique(array_filter($frames, fn($f) => is_string($f) && (is_http_url($f) || str_starts_with($f, '//')) && $f !== $thumb))), 0, $max);
+    return [$thumb, $frames];
+}
 
-    $urls = $thumb !== '' ? [0 => $thumb] : [];
-    foreach ($frames as $k => $f) $urls[$k + 1] = $f;
-    if (!$urls) return ['thumb' => '', 'thumbs' => ''];
+/**
+ * Baixa e salva as thumbs de VÁRIOS vídeos de uma vez (todas as imagens em paralelo).
+ * $jobs = [chave => ['provider','source_id','thumb','frames']]
+ * Retorna [chave => ['thumb' => ..., 'thumbs' => ..., 'ok' => bool]]
+ */
+function thumbs_store_many(array $jobs): array {
+    $out = [];
+    $dir = thumbs_dir();
+    $urls = []; $refs = [];
+    foreach ($jobs as $k => $j) {
+        [$thumb, $frames] = thumbs_clean_list((string)($j['thumb'] ?? ''), (array)($j['frames'] ?? []));
+        $jobs[$k]['thumb'] = $thumb; $jobs[$k]['frames'] = $frames;
+        $out[$k] = ['thumb' => $thumb, 'thumbs' => '', 'ok' => false];
+        if (!$dir || !setting_on('thumbs_local')) continue;
+        if ($thumb !== '') $urls["$k|0"] = $thumb;
+        foreach ($frames as $i => $f) $urls["$k|" . ($i + 1)] = $f;
+    }
+    if (!$urls) return $out;
+    // agrupa por site para mandar o Referer certo
+    $byRef = [];
+    foreach ($urls as $key => $u) { $k = explode('|', $key)[0]; $byRef[provider_referer((string)$jobs[$k]['provider'])][$key] = $u; }
+    $raw = [];
+    foreach ($byRef as $ref => $list) $raw += fetch_images($list, $ref);
+    foreach ($jobs as $k => $j) {
+        $imgs = [];
+        foreach ($raw as $key => $bytes) {
+            [$kk, $i] = explode('|', $key);
+            if ((string)$kk === (string)$k && ($im = img_open($bytes))) $imgs[(int)$i] = $im;
+        }
+        if (!$imgs) continue;
+        ksort($imgs);
+        $base = substr(preg_replace('/[^a-z0-9-]/', '', strtolower($j['provider'] . '-' . $j['source_id'])) ?: 'v', 0, 40) . '-' . bin2hex(random_bytes(4));
+        $r = thumbs_save_images($imgs, $dir, $base, $j['thumb']);
+        $out[$k] = $r + ['ok' => thumb_is_local($r['thumb'])];
+    }
+    return $out;
+}
 
-    $dir = THUMB_DIR . '/' . date('Ym');
-    $absDir = __DIR__ . '/../' . $dir;
-    if (!is_dir($absDir) && !@mkdir($absDir, 0755, true)) return ['thumb' => $thumb, 'thumbs' => ''];
-    $base = substr(preg_replace('/[^a-z0-9-]/', '', strtolower($provider . '-' . $sourceId)) ?: 'v', 0, 40) . '-' . bin2hex(random_bytes(4));
+/** Baixa a thumb principal + quadros de um vídeo (mantém a URL remota se falhar) */
+function thumbs_store(string $provider, string $sourceId, string $thumb, array $frames = []): array {
+    $r = thumbs_store_many([0 => ['provider' => $provider, 'source_id' => $sourceId, 'thumb' => $thumb, 'frames' => $frames]])[0];
+    return ['thumb' => $r['thumb'], 'thumbs' => $r['thumbs']];
+}
 
-    $raw = fetch_images($urls, provider_referer($provider));
-    $imgs = [];
-    foreach ($urls as $i => $_) if (isset($raw[$i]) && ($im = img_open($raw[$i]))) $imgs[$i] = $im;
-    unset($raw);
-    return thumbs_save_images($imgs, $dir, $base, $thumb);
+/* ---------------- Thumbs em segundo plano ---------------- */
+/** Marca para baixar depois: guarda os links dos quadros na coluna thumbs */
+function thumbs_pending_value(array $frames): string { return 'remote:' . json_encode(array_values(array_filter($frames, 'is_string')), JSON_UNESCAPED_SLASHES); }
+function thumbs_is_pending(array $v): bool { return str_starts_with((string)($v['thumbs'] ?? ''), 'remote:'); }
+function thumbs_remote_frames(array $v): array {
+    $t = (string)($v['thumbs'] ?? '');
+    return str_starts_with($t, 'remote:') ? (array)(json_decode(substr($t, 7), true) ?: []) : [];
+}
+function thumbs_pending_count(): int { return db()->count('videos', ['search' => [['thumbs'], 'remote:']]); }
+
+/**
+ * Processa a fila: baixa as thumbs de até $limit vídeos pendentes em paralelo.
+ * Depois de 3 falhas o vídeo sai da fila (a thumb passa a ser carregada direto do site de origem).
+ */
+function thumbs_process_batch(int $limit = 6, ?int $onlyId = null): array {
+    if (thumbs_problem() !== '') return ['saved' => 0, 'failed' => 0, 'pending' => thumbs_pending_count(), 'writable' => thumbs_dir() !== null];
+    $list = $onlyId ? array_filter([db()->find('videos', $onlyId)]) : db()->query('videos', ['search' => [['thumbs'], 'remote:'], 'order' => 'id DESC', 'limit' => $limit]);
+    $list = array_values(array_filter($list, 'thumbs_is_pending'));
+    $jobs = [];
+    foreach ($list as $v) $jobs[$v['id']] = ['provider' => $v['provider'], 'source_id' => $v['source_id'], 'thumb' => $v['thumb'], 'frames' => thumbs_remote_frames($v)];
+    $res = $jobs ? thumbs_store_many($jobs) : [];
+    $ok = 0; $fail = 0;
+    foreach ($res as $id => $r) {
+        if ($r['ok']) { db()->update('videos', $id, ['thumb' => $r['thumb'], 'thumbs' => $r['thumbs']]); $ok++; continue; }
+        $fail++;
+        if (!rl_hit('thumbfail:' . $id, 2, 86400)) db()->update('videos', $id, ['thumbs' => 'failed:' . time()]);  // 3ª falha: desiste
+    }
+    if ($ok) @unlink(__DIR__ . '/../data/cache_tags.json');
+    return ['saved' => $ok, 'failed' => $fail, 'pending' => thumbs_pending_count(), 'writable' => thumbs_dir() !== null];
+}
+
+/** Coloca de volta na fila os vídeos cuja thumb ainda é um link de outro site */
+function thumbs_requeue_remote(): int {
+    $n = 0; $offset = 0;
+    while ($chunk = db()->query('videos', ['search' => [['thumb'], 'http'], 'order' => 'id ASC', 'limit' => 500, 'offset' => $offset])) {
+        foreach ($chunk as $v) if (!thumbs_is_pending($v) && !thumb_is_local($v['thumb'])) { db()->update('videos', $v['id'], ['thumbs' => thumbs_pending_value([])]); $n++; }
+        $offset += 500;
+    }
+    return $n;
+}
+
+/** URL da thumb para mostrar no site: arquivo local, ou thumb.php (que baixa na hora / usa o link do site de origem) */
+function video_thumb_url(array $v): string {
+    if (thumb_is_local($v['thumb'] ?? '')) return thumb_url($v['thumb']);
+    if (($v['thumb'] ?? '') === '' && !thumbs_is_pending($v)) return thumb_url('');
+    return base_url('thumb.php?v=' . (int)$v['id']);
+}
+function video_thumb_abs(array $v): string {
+    $u = video_thumb_url($v);
+    return preg_match('~^https?://~', $u) ? $u : absolute_url(ltrim(preg_replace('~^' . preg_quote(rtrim(base_url(), '/'), '~') . '~', '', $u), '/'));
 }
 
 /** Grava a principal (índice 0) e o sprite (índices 1+) a partir de imagens GD já abertas */
@@ -278,6 +363,7 @@ function thumbs_optimize_local(array $v): ?array {
 function thumb_preview(?string $thumbs): array {
     $t = trim((string)$thumbs);
     if ($t === '') return [];
+    if (str_starts_with($t, 'remote:') || str_starts_with($t, 'failed:')) return [];
     if (preg_match('/^sprite:(.+):(\d+)$/', $t, $m)) return ['sprite' => thumb_url($m[1]), 'path' => $m[1], 'n' => (int)$m[2]];
     return ['frames' => array_map('thumb_url', split_list($t)), 'paths' => split_list($t)];
 }
@@ -327,6 +413,15 @@ function fmt_bytes(int $b): string {
     if ($b >= 1073741824) return number_format($b / 1073741824, 2, ',', '.') . ' GB';
     if ($b >= 1048576) return number_format($b / 1048576, 1, ',', '.') . ' MB';
     return number_format($b / 1024, 0, ',', '.') . ' KB';
+}
+
+/** Explica por que o servidor não consegue salvar thumbs (ou '' se está tudo certo) */
+function thumbs_problem(): string {
+    if (!setting_on('thumbs_local')) return 'A opção “Salvar as thumbs no meu servidor” está desligada (Configurações › Thumbs).';
+    if (!function_exists('imagecreatefromstring')) return 'A extensão GD do PHP não está ativa. Ative “gd” nas extensões do PHP da hospedagem.';
+    if (!function_exists('curl_multi_init')) return 'A extensão cURL do PHP não está ativa.';
+    if (thumbs_dir() === null) return 'A pasta uploads/thumbs não tem permissão de escrita. No Gerenciador de Arquivos, dê permissão 755 (ou 775) às pastas “uploads” e “uploads/thumbs”.';
+    return '';
 }
 
 /** true se a opção estiver ligada (padrão: ligada) */
