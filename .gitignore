@@ -4,3 +4,5 @@ data/config.local.php
 data/installed.lock
 /robots.txt
 .DS_Store
+uploads/thumbs/*
+!uploads/thumbs/.gitkeep

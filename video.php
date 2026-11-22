@@ -37,7 +37,7 @@ $voted = $_SESSION['votes'][$v['id']] ?? '';
 $pageTitle = $v['title'];
 $pageDesc = $v['description'] ?: $v['title'] . ' - assista grátis em ' . site_name();
 $canonical = video_url($v);
-$ogImage = $v['thumb'];
+$ogImage = thumb_abs($v['thumb']);
 $ogType = 'video.other';
 require __DIR__ . '/includes/header.php';
 ?>
@@ -92,9 +92,9 @@ require __DIR__ . '/includes/header.php';
     <?php if ($ad = setting('ad_sidebar', '')): ?><div class="ad ad-side"><?= $ad ?></div><?php endif; ?>
     <h3>Vídeos relacionados</h3>
     <div class="side-list">
-      <?php foreach ($related as $r): $th = $r['thumb'] ?: base_url('assets/img/no-thumb.svg'); ?>
+      <?php foreach ($related as $r): $th = thumb_url($r['thumb']); ?>
       <a class="side-item" href="<?= e(video_url($r)) ?>">
-        <span class="thumb"><img src="<?= e($th) ?>" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.src='<?= e(base_url('assets/img/no-thumb.svg')) ?>'">
+        <span class="thumb"><img src="<?= e($th) ?>" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" onerror="this.onerror=null;this.src='<?= e(base_url('assets/img/no-thumb.svg')) ?>'">
           <?php if ($d = fmt_duration((int)$r['duration'])): ?><span class="dur"><?= $d ?></span><?php endif; ?></span>
         <span><span class="t"><?= e($r['title']) ?></span><span class="meta"><span><?= fmt_views((int)$r['views']) ?> views</span></span></span>
       </a>
@@ -122,7 +122,7 @@ require __DIR__ . '/includes/header.php';
 
 <script type="application/ld+json"><?= json_encode([
   '@context' => 'https://schema.org', '@type' => 'VideoObject', 'name' => $v['title'],
-  'description' => $pageDesc, 'thumbnailUrl' => $v['thumb'], 'uploadDate' => date('c', strtotime($v['created_at'])),
+  'description' => $pageDesc, 'thumbnailUrl' => thumb_abs($v['thumb']), 'uploadDate' => date('c', strtotime($v['created_at'])),
   'duration' => 'PT' . (int)$v['duration'] . 'S', 'embedUrl' => $v['embed_url'], 'isFamilyFriendly' => false,
 ], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_HEX_TAG) ?></script>
 <?php require __DIR__ . '/includes/footer.php'; ?>

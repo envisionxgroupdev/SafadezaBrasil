@@ -10,7 +10,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             case 'close':     db()->update('reports', $r['id'], ['status' => 'closed']); flash('Denúncia arquivada.'); break;
             case 'restore':   db()->update('videos', $r['video_id'], ['status' => 'published']); db()->update('reports', $r['id'], ['status' => 'closed']); flash('Vídeo republicado e denúncia arquivada.'); break;
             case 'unpublish': db()->update('videos', $r['video_id'], ['status' => 'review']); flash('Vídeo retirado do ar.'); break;
-            case 'delvideo':  db()->delete('videos', $r['video_id']); db()->update('reports', $r['id'], ['status' => 'closed']); flash('Vídeo excluído.'); break;
+            case 'delvideo':  if ($dv = db()->find('videos', $r['video_id'])) thumbs_delete($dv); db()->delete('videos', $r['video_id']); db()->update('reports', $r['id'], ['status' => 'closed']); flash('Vídeo excluído.'); break;
         }
         clear_public_cache();
     }
@@ -28,7 +28,7 @@ admin_header('Denúncias', 'reports');
   <a class="btn <?= $status === 'open' ? 'btn-primary' : '' ?>" href="?status=open">Abertas</a>
   <a class="btn <?= $status === 'closed' ? 'btn-primary' : '' ?>" href="?status=closed">Arquivadas</a>
 </div>
-<div class="card" style="overflow-x:auto">
+<div class="card table-wrap">
 <table>
   <thead><tr><th>Data</th><th>Vídeo</th><th>Motivo</th><th>Detalhes</th><th></th></tr></thead>
   <tbody>

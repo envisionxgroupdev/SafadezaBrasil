@@ -6,6 +6,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_check();
     $ids = array_map('intval', (array)($_POST['ids'] ?? []));
     $act = $_POST['bulk'] ?? '';
+    @set_time_limit(300);
     $catId = (int)($_POST['bulk_cat'] ?? 0);
     $n = 0;
     foreach ($ids as $id) {
@@ -16,7 +17,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             case 'draft':     db()->update('videos', $id, ['status' => 'draft']); break;
             case 'feature':   db()->update('videos', $id, ['featured' => 1]); break;
             case 'unfeature': db()->update('videos', $id, ['featured' => 0]); break;
-            case 'delete':    db()->delete('videos', $id); break;
+            case 'delete':    thumbs_delete($v); db()->delete('videos', $id); break;
+            case 'fixthumbs':
+                if (!thumb_is_local($v['thumb'])) {
+                    $meta = ($p = importer_parse($v['source_url'] ?: $v['embed_url'])) ? importer_fetch_meta($p) : [];
+                    $th = thumbs_store($v['provider'], (string)$v['source_id'], ($meta['thumb'] ?? '') ?: (string)$v['thumb'], $meta['thumbs'] ?? []);
+                    if ($th['thumb'] !== '') db()->update('videos', $id, $th);
+                }
+                break;
             case 'addcat':
                 if ($catId) { $c = split_list($v['categories']); $c[] = (string)$catId; db()->update('videos', $id, ['categories' => implode(',', array_unique($c))]); }
                 break;
@@ -71,26 +79,27 @@ admin_header('Vídeos', 'videos');
       <option value="publish">Publicar</option><option value="draft">Mover p/ rascunho</option>
       <option value="feature">Marcar destaque</option><option value="unfeature">Tirar destaque</option>
       <option value="addcat">Adicionar à categoria →</option><option value="delcat">Remover da categoria →</option>
+      <option value="fixthumbs">Baixar/reparar thumbs</option>
       <option value="delete">Excluir</option>
     </select>
     <select name="bulk_cat"><option value="0">(categoria)</option><?php foreach ($cats as $c): ?><option value="<?= $c['id'] ?>"><?= e($c['name']) ?></option><?php endforeach; ?></select>
     <button class="btn" data-confirm="Aplicar esta ação aos vídeos selecionados?">Aplicar</button>
   </div>
-  <div style="overflow-x:auto">
-  <table>
+  <div class="table-wrap">
+  <table class="vtable">
     <thead><tr><th style="width:30px"><input type="checkbox" id="check-all"></th><th>Vídeo</th><th></th><th class="hide-m">Site</th><th class="hide-m">Categorias</th><th>Views</th><th>Status</th><th></th></tr></thead>
     <tbody>
     <?php foreach ($videos as $v): ?>
       <tr>
-        <td><input type="checkbox" class="row-check" name="ids[]" value="<?= $v['id'] ?>"></td>
-        <td style="width:120px"><img class="tthumb" src="<?= e($v['thumb'] ?: base_url('assets/img/no-thumb.svg')) ?>" referrerpolicy="no-referrer" loading="lazy" alt=""></td>
-        <td><a class="ttitle" href="video-edit.php?id=<?= $v['id'] ?>"><?= !empty($v['featured']) ? '⭐ ' : '' ?><?= e($v['title']) ?></a>
+        <td class="c-check"><input type="checkbox" class="row-check" name="ids[]" value="<?= $v['id'] ?>"></td>
+        <td class="c-thumb" style="width:120px"><img class="tthumb" src="<?= e(thumb_url($v['thumb'])) ?>" referrerpolicy="no-referrer" loading="lazy" alt=""></td>
+        <td class="c-title"><a class="ttitle" href="video-edit.php?id=<?= $v['id'] ?>"><?= !empty($v['featured']) ? '⭐ ' : '' ?><?= e($v['title']) ?></a>
             <small class="muted"><?= fmt_duration((int)$v['duration']) ?> · #<?= $v['id'] ?> · <?= date('d/m/Y', strtotime($v['created_at'])) ?></small></td>
         <td class="hide-m"><span class="tag"><?= e($provs[$v['provider']]['name'] ?? $v['provider']) ?></span></td>
         <td class="hide-m" style="max-width:200px"><small><?= e(implode(', ', array_map(fn($id) => $catMap[$id]['name'] ?? '', split_list($v['categories'])))) ?></small></td>
-        <td><?= fmt_views((int)$v['views']) ?></td>
-        <td><span class="tag <?= e($v['status']) ?>"><?= e(['published' => 'Publicado', 'draft' => 'Rascunho', 'review' => 'Revisão'][$v['status']] ?? $v['status']) ?></span></td>
-        <td style="white-space:nowrap"><a class="btn btn-sm" href="video-edit.php?id=<?= $v['id'] ?>">Editar</a> <a class="btn btn-sm" href="<?= e(video_url($v)) ?>" target="_blank">↗</a></td>
+        <td class="c-views"><?= fmt_views((int)$v['views']) ?> <span class="hide-d muted">views</span></td>
+        <td class="c-status"><span class="tag <?= e($v['status']) ?>"><?= e(['published' => 'Publicado', 'draft' => 'Rascunho', 'review' => 'Revisão'][$v['status']] ?? $v['status']) ?></span></td>
+        <td class="c-act" style="white-space:nowrap"><a class="btn btn-sm" href="video-edit.php?id=<?= $v['id'] ?>">Editar</a> <a class="btn btn-sm" href="<?= e(video_url($v)) ?>" target="_blank">↗</a></td>
       </tr>
     <?php endforeach; if (!$videos): ?><tr><td colspan="8" class="muted" style="text-align:center;padding:30px">Nenhum vídeo. <a href="import.php">Importar agora</a></td></tr><?php endif; ?>
     </tbody>

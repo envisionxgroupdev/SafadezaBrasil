@@ -24,8 +24,8 @@ admin_header('Importador de vídeos', 'import');
 <div class="card">
   <strong>Sites suportados:</strong>
   <div class="providers"><?php foreach ($provs as $p): ?><span class="tag"><?= e($p['name']) ?></span><?php endforeach; ?><span class="tag">+ qualquer &lt;iframe&gt;</span></div>
-  <p class="muted" style="margin:10px 0 0">O vídeo continua hospedado no site de origem — aqui só guardamos o embed, título, thumb, duração e tags.
-     Vídeos repetidos são ignorados automaticamente.</p>
+  <p class="muted" style="margin:10px 0 0">O vídeo continua hospedado no site de origem. A <b>thumb é baixada para o seu servidor</b> (junto com quadros para a prévia animada),
+     então ela sempre aparece. Vídeos repetidos são ignorados automaticamente.</p>
 </div>
 
 <div class="tabs">
@@ -38,8 +38,8 @@ admin_header('Importador de vídeos', 'import');
 <div class="tab active" id="tab-single">
   <div class="card">
     <div class="field"><label>Link do vídeo ou código de embed</label>
-      <div style="display:flex;gap:10px">
-        <input type="text" id="single-input" class="grow" style="flex:1;padding:11px 12px;border:1px solid var(--line);border-radius:8px;font:inherit" placeholder="https://www.xvideos.com/video.abc123/...   ou   <iframe src=...>">
+      <div class="input-row">
+        <input type="text" id="single-input" placeholder="https://www.xvideos.com/video.abc123/...   ou   <iframe src=...>">
         <button class="btn btn-primary" id="single-fetch">Buscar dados</button>
       </div>
       <small>Cole o link da página do vídeo (XVideos, Pornhub, xHamster, etc.) ou o código &lt;iframe&gt; que o site fornece.</small>
@@ -50,11 +50,12 @@ admin_header('Importador de vídeos', 'import');
       <div class="preview">
         <div>
           <div class="player"><iframe id="single-player" allowfullscreen scrolling="no"></iframe></div>
-          <img id="single-thumbprev" class="tthumb" style="width:100%;margin-top:10px" referrerpolicy="no-referrer" alt="">
+          <img id="single-thumbprev" class="tthumb" style="width:100%;margin-top:10px" alt="">
+          <div class="frames" id="single-frames"></div>
           <p class="muted" id="single-src" style="word-break:break-all;font-size:12px"></p>
         </div>
         <div>
-          <input type="hidden" name="provider"><input type="hidden" name="source_id"><input type="hidden" name="source_url">
+          <input type="hidden" name="provider"><input type="hidden" name="source_id"><input type="hidden" name="source_url"><input type="hidden" name="thumbs">
           <div class="field"><label>Título</label><input type="text" name="title" required></div>
           <div class="row">
             <div class="field"><label>Duração</label><input type="text" name="duration" placeholder="12:34"></div>
@@ -116,6 +117,8 @@ admin_header('Importador de vídeos', 'import');
     </div>
     <form id="search-opts"><?php $commonOpts($cats); ?></form>
     <button type="button" class="btn btn-primary" id="search-import">⬇️ Importar selecionados (<span id="sel-count">0</span>)</button>
+    <div class="progress" id="search-progress" style="display:none"><span id="search-bar"></span></div>
+    <div class="muted" id="search-status" style="margin-top:6px"></div>
     <div class="rgrid" id="search-grid"></div>
   </div>
 </div>

@@ -1,5 +1,6 @@
 <?php
 require __DIR__ . '/../includes/bootstrap.php';
-unset($_SESSION['admin_id'], $_SESSION['admin_user']);
-session_regenerate_id(true);
-redirect(base_url('admin/login.php'));
+// Só sai com o token da sessão (impede que outro site te deslogue por um link)
+$t = (string)($_GET['t'] ?? '');
+if (csrf_valid($t)) admin_logout_session();
+redirect(base_url(is_admin() ? 'admin/' : 'admin/login.php'));

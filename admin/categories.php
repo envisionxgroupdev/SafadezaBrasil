@@ -30,15 +30,15 @@ $edit = isset($_GET['edit']) ? db()->find('categories', (int)$_GET['edit']) : nu
 $cats = all_categories();
 admin_header('Categorias', 'categories');
 ?>
-<div class="grid2" style="grid-template-columns:minmax(0,1.5fr) minmax(0,1fr)">
+<div class="grid2 grid-wide">
   <div class="card">
     <h2><?= count($cats) ?> categorias</h2>
-    <table>
-      <thead><tr><th>Ordem</th><th>Nome</th><th>Vídeos</th><th></th></tr></thead>
+    <div class="table-wrap"><table>
+      <thead><tr><th class="hide-m">Ordem</th><th>Nome</th><th>Vídeos</th><th></th></tr></thead>
       <tbody>
       <?php foreach ($cats as $c): ?>
         <tr>
-          <td><?= (int)$c['sort'] ?></td>
+          <td class="hide-m"><?= (int)$c['sort'] ?></td>
           <td><strong><?= e($c['name']) ?></strong><br><small class="muted">/<?= e($c['slug']) ?></small></td>
           <td><?= db()->count('videos', ['in_set' => ['categories', $c['id']]]) ?></td>
           <td style="white-space:nowrap;text-align:right">
@@ -49,7 +49,7 @@ admin_header('Categorias', 'categories');
         </tr>
       <?php endforeach; ?>
       </tbody>
-    </table>
+    </table></div>
   </div>
   <form method="post" class="card">
     <?= csrf_field() ?>

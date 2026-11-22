@@ -53,8 +53,29 @@ function inst_mysql_error(Throwable $e): string {
     return 'Erro do MySQL: ' . $m;
 }
 
+private_page_headers();
+security_headers();
+
 /* ---------------- Já instalado ---------------- */
-if (is_installed()) $step = 'done';
+if (is_installed()) {
+    // Instalado: o instalador some. Só mostra a tela final logo depois de instalar.
+    if (empty($inst['just_done'])) { http_response_code(404); redirect(base_url()); }
+    $step = 'done';
+}
+
+/* ---------------- Chave de instalação (prova que é o dono da hospedagem) ---------------- */
+if (!is_installed()) {
+    $key = install_key();
+    if ($step === '1' && $_SERVER['REQUEST_METHOD'] === 'POST') {
+        csrf_check();
+        $inst['key_tries'] = (int)($inst['key_tries'] ?? 0) + 1;
+        $typed = strtoupper(preg_replace('/[^A-Za-z0-9]/', '', (string)($_POST['install_key'] ?? '')));
+        if ($inst['key_tries'] > 10) $errors[] = 'Muitas tentativas. Feche o navegador e tente de novo mais tarde.';
+        elseif (hash_equals(str_replace('-', '', $key), $typed)) { $inst['key_ok'] = true; redirect('install.php?step=2'); }
+        else $errors[] = 'Chave incorreta. Confira o arquivo data/chave-instalacao.txt.';
+    }
+    if (in_array($step, ['2', '3'], true) && empty($inst['key_ok'])) redirect('install.php');
+}
 
 /* ---------------- Etapa 1: requisitos ---------------- */
 $checks = [
@@ -105,7 +126,7 @@ if ($step === '3' && $_SERVER['REQUEST_METHOD'] === 'POST') {
     $inst['site_form'] = ['site_name' => $siteName, 'site_tagline' => trim($_POST['site_tagline'] ?? ''), 'admin_user' => $user, 'contact_email' => trim($_POST['contact_email'] ?? '')];
     if ($siteName === '') $errors[] = 'Informe o nome do site.';
     if (!preg_match('/^[A-Za-z0-9_.-]{3,40}$/', $user)) $errors[] = 'Usuário do admin: 3 a 40 caracteres (letras, números, ponto, traço).';
-    if (strlen($pass) < 8) $errors[] = 'A senha do admin precisa ter pelo menos 8 caracteres.';
+    if (strlen($pass) < 8 || !preg_match('/[A-Za-z]/', $pass) || !preg_match('/\d/', $pass)) $errors[] = 'A senha do admin precisa ter pelo menos 8 caracteres, com letras e números.';
     if ($pass !== ($_POST['admin_pass2'] ?? '')) $errors[] = 'As senhas não conferem.';
     if (!$errors) {
         try {
@@ -133,13 +154,14 @@ if ($step === '3' && $_SERVER['REQUEST_METHOD'] === 'POST') {
                 $row = $mysql->findBy('settings', 'skey', $k);
                 $row ? $mysql->update('settings', $row['id'], ['svalue' => $v]) : $mysql->insert('settings', ['skey' => $k, 'svalue' => $v]);
             }
+            $row = $mysql->findBy('settings', 'skey', 'schema_version');
+            $row ? $mysql->update('settings', $row['id'], ['svalue' => (string)SCHEMA_VERSION]) : $mysql->insert('settings', ['skey' => 'schema_version', 'svalue' => (string)SCHEMA_VERSION]);
             file_put_contents($dataDir . '/installed.lock', 'Instalado em ' . date('c'));
+            @unlink(install_key_file());
+            @chmod($localCfg, 0640);
             // Já entra logado no painel
-            session_regenerate_id(true);
-            $a = $mysql->findBy('admins', 'username', $user);
-            $_SESSION['admin_id'] = $a['id'];
-            $_SESSION['admin_user'] = $user;
-            $inst = ['done_log' => $log];
+            admin_login_session($mysql->findBy('admins', 'username', $user));
+            $inst = ['done_log' => $log, 'just_done' => true];
             redirect('install.php?step=done');
         } catch (Throwable $e) {
             $errors[] = $e instanceof PDOException ? inst_mysql_error($e) : $e->getMessage();
@@ -148,7 +170,7 @@ if ($step === '3' && $_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 $db = $inst['db_form'] ?? ['host' => 'localhost', 'port' => 3306, 'name' => '', 'user' => ''];
-$sf = $inst['site_form'] ?? ['site_name' => site_name(), 'site_tagline' => SITE_TAGLINE, 'admin_user' => 'admin', 'contact_email' => ''];
+$sf = $inst['site_form'] ?? ['site_name' => site_name(), 'site_tagline' => SITE_TAGLINE, 'admin_user' => '', 'contact_email' => ''];
 $stepNum = ['1' => 1, '2' => 2, '3' => 3, 'done' => 4][$step] ?? 1;
 ?><!DOCTYPE html>
 <html lang="pt-BR"><head>
@@ -175,8 +197,13 @@ $stepNum = ['1' => 1, '2' => 2, '3' => 3, 'done' => 4][$step] ?? 1;
   .foot{display:flex;justify-content:space-between;align-items:center;margin-top:22px;gap:10px}
   .btn-lg{padding:13px 22px;font-size:15px}
   .field small{color:var(--muted);display:block;margin-top:4px;font-size:12.5px}
+  .keybox{margin-top:22px;background:#0d0d0d;border:1px solid #3a2a10;border-radius:10px;padding:18px}
+  .keybox h3{margin:0 0 6px;font-size:16px} .keybox p{color:var(--text2);font-size:14px;margin:0 0 14px}
   .done-ic{width:64px;height:64px;border-radius:50%;background:var(--primary);color:#000;font-size:34px;font-weight:900;display:flex;align-items:center;justify-content:center;margin:0 auto 16px}
-  @media(max-width:520px){.grid2{grid-template-columns:1fr}.box{padding:20px}}
+  .chk div{min-width:0;overflow-wrap:anywhere}
+  @media(max-width:520px){.grid2{grid-template-columns:1fr}.box{padding:18px}.inst{padding:24px 12px 40px}.steps div{font-size:10px;letter-spacing:0}
+    .foot{flex-direction:column-reverse;align-items:stretch}.foot .btn{justify-content:center}.inst-head .brand.lg .brand-word{font-size:24px}.inst-head .brand.lg .brand-mark{width:40px;height:40px;border-radius:10px}.inst-head .brand.lg .brand-mark svg{width:20px;height:20px}}
+  html,body{overflow-x:hidden}
 </style>
 </head><body>
 <div class="inst">
@@ -198,9 +225,19 @@ $stepNum = ['1' => 1, '2' => 2, '3' => 3, 'done' => 4][$step] ?? 1;
     <?php endforeach; ?>
     <div class="foot">
       <span class="muted small">PHP <?= e(PHP_VERSION) ?></span>
-      <?php if ($checksOk): ?><a class="btn btn-primary btn-lg" href="install.php?step=2">Continuar →</a>
-      <?php else: ?><a class="btn btn-lg" href="install.php">↻ Verificar de novo</a><?php endif; ?>
+      <?php if (!$checksOk): ?><a class="btn btn-lg" href="install.php">↻ Verificar de novo</a><?php endif; ?>
     </div>
+    <?php if ($checksOk): ?>
+    <form method="post" action="install.php?step=1" class="keybox" autocomplete="off">
+      <?= csrf_field() ?>
+      <h3>🔒 Confirme que você é o dono do site</h3>
+      <p>Para ninguém instalar no seu lugar, criamos uma chave secreta dentro da sua hospedagem.
+         Abra o <b>Gerenciador de Arquivos</b>, entre na pasta <code>data</code> e abra o arquivo <code>chave-instalacao.txt</code>.</p>
+      <div class="field"><label>Chave de instalação</label>
+        <input type="text" name="install_key" placeholder="XXXX-XXXX-XXXX" maxlength="20" required style="text-transform:uppercase;letter-spacing:2px;font-weight:700;font-size:17px"></div>
+      <button class="btn btn-primary btn-lg" style="width:100%;justify-content:center">Continuar →</button>
+    </form>
+    <?php endif; ?>
 
   <?php elseif ($step === '2'): ?>
     <h2>Banco de dados MySQL</h2>
@@ -230,7 +267,7 @@ $stepNum = ['1' => 1, '2' => 2, '3' => 3, 'done' => 4][$step] ?? 1;
       <div class="field"><label>Slogan</label><input type="text" name="site_tagline" value="<?= e($sf['site_tagline']) ?>"></div>
       <div class="field"><label>E-mail de contato</label><input type="email" name="contact_email" value="<?= e($sf['contact_email']) ?>"><small>Aparece nas páginas de Contato e DMCA.</small></div>
       <hr style="border:0;border-top:1px solid var(--line);margin:18px 0">
-      <div class="field"><label>Usuário do admin</label><input type="text" name="admin_user" value="<?= e($sf['admin_user']) ?>" required></div>
+      <div class="field"><label>Usuário do admin</label><input type="text" name="admin_user" value="<?= e($sf['admin_user']) ?>" required autocomplete="off"><small>Evite “admin”: é o primeiro nome que robôs tentam.</small></div>
       <div class="grid2" style="grid-template-columns:1fr 1fr">
         <div class="field"><label>Senha do admin</label><input type="password" name="admin_pass" minlength="8" required></div>
         <div class="field"><label>Repetir senha</label><input type="password" name="admin_pass2" minlength="8" required></div>
@@ -255,7 +292,8 @@ $stepNum = ['1' => 1, '2' => 2, '3' => 3, 'done' => 4][$step] ?? 1;
         <a class="btn btn-primary btn-lg" href="<?= e(base_url('admin/import.php')) ?>">Ir ao painel e importar vídeos</a>
         <a class="btn btn-lg" href="<?= e(base_url()) ?>">Ver o site</a>
       </div>
-      <p class="muted small" style="margin-top:22px">O instalador agora está bloqueado. Para reinstalar, apague o arquivo <code>data/installed.lock</code>.</p>
+      <p class="muted small" style="margin-top:22px">🔒 O instalador agora está bloqueado e a chave foi apagada.
+        Em <b>Admin › Segurança</b> você pode apagar o install.php e conferir as outras proteções.</p>
     </div>
   <?php endif; ?>
   </div>

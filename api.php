@@ -2,10 +2,10 @@
 require __DIR__ . '/includes/bootstrap.php';
 header('Content-Type: application/json; charset=utf-8');
 
-function out(array $d): never { echo json_encode($d, JSON_UNESCAPED_UNICODE); exit; }
+function out(array $d): void { echo json_encode($d, JSON_UNESCAPED_UNICODE); exit; }
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') out(['ok' => false, 'msg' => 'Método inválido']);
-if (!hash_equals($_SESSION['csrf'] ?? '', $_POST['csrf'] ?? '')) out(['ok' => false, 'msg' => 'Sessão expirada, recarregue a página']);
+if (!csrf_valid($_POST['csrf'] ?? '')) out(['ok' => false, 'msg' => 'Sessão expirada, recarregue a página']);
 
 $action = $_POST['action'] ?? '';
 $id = (int)($_POST['id'] ?? 0);

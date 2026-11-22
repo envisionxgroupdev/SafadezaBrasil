@@ -1,10 +1,10 @@
 <?php
 require __DIR__ . '/../includes/bootstrap.php';
 header('Content-Type: application/json; charset=utf-8');
-function out(array $d): never { echo json_encode($d, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES); exit; }
+function out(array $d): void { echo json_encode($d, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES); exit; }
 
 if (!is_admin()) out(['ok' => false, 'msg' => 'Faça login novamente']);
-if (!hash_equals($_SESSION['csrf'] ?? '', $_POST['csrf'] ?? '')) out(['ok' => false, 'msg' => 'Sessão expirada, recarregue a página']);
+if (!csrf_valid($_POST['csrf'] ?? '')) out(['ok' => false, 'msg' => 'Sessão expirada, recarregue a página']);
 @set_time_limit(120);
 session_write_close(); // não trava outras abas enquanto busca
 
@@ -37,6 +37,7 @@ switch ($_POST['action'] ?? '') {
             'title' => $_POST['title'] ?? '', 'thumb' => trim($_POST['thumb'] ?? ''),
             'duration' => parse_duration($_POST['duration'] ?? ''), 'tags' => split_list($_POST['tags'] ?? ''),
             'description' => $_POST['description'] ?? '', 'models' => $_POST['models'] ?? '', 'featured' => !empty($_POST['featured']),
+            'thumbs' => array_values(array_filter((array)json_decode($_POST['thumbs'] ?? '[]', true), 'is_string')),
         ];
         if (!filter_var($d['embed_url'], FILTER_VALIDATE_URL)) out(['ok' => false, 'msg' => 'URL de embed inválida']);
         [$ok, $r] = importer_save($d, $opts);
@@ -66,17 +67,15 @@ switch ($_POST['action'] ?? '') {
         out(['ok' => true, 'items' => $list, 'msg' => $list ? '' : 'Nada encontrado (ou a API do site não respondeu).']);
     }
 
-    case 'save_many': {
-        $items = json_decode($_POST['items'] ?? '[]', true) ?: [];
-        $done = 0; $skip = 0; $err = 0;
-        foreach ($items as $it) {
-            if (!isset($provs[$it['provider'] ?? ''])) { $err++; continue; }
-            $it['embed_url'] = str_replace('{id}', $it['source_id'], $provs[$it['provider']]['embed']);
-            [$ok, $r] = importer_save($it, $opts);
-            $ok ? $done++ : ($r === 'Já existe no site' ? $skip++ : $err++);
-        }
-        if ($done) $clear();
-        out(['ok' => true, 'done' => $done, 'skip' => $skip, 'err' => $err]);
+    case 'save_one': {
+        $it = json_decode($_POST['item'] ?? '', true);
+        if (!is_array($it) || !isset($provs[$it['provider'] ?? ''])) out(['ok' => false, 'status' => 'err', 'msg' => 'Item inválido']);
+        $it['embed_url'] = str_replace('{id}', (string)$it['source_id'], $provs[$it['provider']]['embed']);
+        [$ok, $r] = importer_save($it, $opts);
+        if ($ok) $clear();
+        $v = $ok ? db()->find('videos', $r) : null;
+        out(['ok' => $ok, 'status' => $ok ? 'ok' : ($r === 'Já existe no site' ? 'skip' : 'err'), 'msg' => $ok ? '' : $r,
+             'local_thumb' => $v ? thumb_is_local($v['thumb']) : false]);
     }
 }
 out(['ok' => false, 'msg' => 'Ação inválida']);

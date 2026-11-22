@@ -42,7 +42,7 @@ foreach ($videos as $v) {
     echo '<url><loc>' . $x($abs(video_url($v))) . '</loc><lastmod>' . date('Y-m-d', strtotime($v['created_at'])) . '</lastmod>';
     if ($v['thumb']) {
         echo '<video:video>'
-           . '<video:thumbnail_loc>' . $x($v['thumb']) . '</video:thumbnail_loc>'
+           . '<video:thumbnail_loc>' . $x(thumb_abs($v['thumb'])) . '</video:thumbnail_loc>'
            . '<video:title>' . $x(mb_substr($v['title'], 0, 100)) . '</video:title>'
            . '<video:description>' . $x(mb_substr($v['description'] ?: $v['title'], 0, 2000)) . '</video:description>'
            . '<video:player_loc>' . $x($v['embed_url']) . '</video:player_loc>'

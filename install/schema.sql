@@ -9,13 +9,14 @@ SET NAMES utf8mb4;
 CREATE TABLE IF NOT EXISTS `videos` (
   `id`          INT UNSIGNED NOT NULL AUTO_INCREMENT,
   `title`       VARCHAR(255) NOT NULL,
-  `slug`        VARCHAR(255) NOT NULL,
+  `slug`        VARCHAR(190) NOT NULL,
   `description` TEXT NULL,
   `provider`    VARCHAR(40)  NOT NULL DEFAULT 'custom',
   `source_url`  VARCHAR(500) NULL,
   `source_id`   VARCHAR(120) NULL,
   `embed_url`   VARCHAR(500) NOT NULL,
   `thumb`       VARCHAR(500) NULL,
+  `thumbs`      TEXT NULL,
   `duration`    INT UNSIGNED NOT NULL DEFAULT 0,
   `tags`        TEXT NULL,
   `categories`  VARCHAR(255) NULL,
@@ -30,8 +31,7 @@ CREATE TABLE IF NOT EXISTS `videos` (
   UNIQUE KEY `uniq_slug` (`slug`),
   UNIQUE KEY `uniq_source` (`provider`, `source_id`),
   KEY `idx_status_created` (`status`, `created_at`),
-  KEY `idx_views` (`views`),
-  FULLTEXT KEY `ft_search` (`title`, `tags`)
+  KEY `idx_views` (`views`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS `categories` (
@@ -64,6 +64,17 @@ CREATE TABLE IF NOT EXISTS `admins` (
   `created_at`    DATETIME     NOT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `uniq_user` (`username`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `logins` (
+  `id`         INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `username`   VARCHAR(60)  NULL,
+  `ip`         VARCHAR(64)  NOT NULL,
+  `user_agent` VARCHAR(255) NULL,
+  `success`    TINYINT(1)   NOT NULL DEFAULT 0,
+  `created_at` DATETIME     NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `idx_ip_time` (`ip`, `created_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS `settings` (

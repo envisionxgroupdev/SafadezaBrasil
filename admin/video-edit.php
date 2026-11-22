@@ -9,7 +9,7 @@ if ($id && !$v) { flash('Vídeo não encontrado.', 'err'); redirect('videos.php'
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_check();
     if (isset($_POST['delete']) && $v) {
-        db()->delete('videos', $v['id']); clear_public_cache();
+        thumbs_delete($v); db()->delete('videos', $v['id']); clear_public_cache();
         flash('Vídeo excluído.'); redirect('videos.php');
     }
     $embed = trim($_POST['embed_url'] ?? '');
@@ -25,7 +25,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             'slug' => unique_slug('videos', trim($_POST['slug'] ?? '') ?: $title, $v['id'] ?? null),
             'description' => trim($_POST['description'] ?? ''),
             'embed_url' => $embedUrl,
-            'thumb' => trim($_POST['thumb'] ?? ''),
+            'thumb' => $newThumb = trim($_POST['thumb'] ?? ''),
             'duration' => parse_duration($_POST['duration'] ?? ''),
             'tags' => implode(', ', split_list($_POST['tags'] ?? '')),
             'models' => implode(', ', split_list($_POST['models'] ?? '')),
@@ -36,6 +36,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             'likes' => max(0, (int)($_POST['likes'] ?? 0)),
             'dislikes' => max(0, (int)($_POST['dislikes'] ?? 0)),
         ];
+        // Thumb nova colada como link: baixa para o servidor
+        if ($newThumb !== '' && !thumb_is_local($newThumb) && $newThumb !== ($v['thumb'] ?? null)) {
+            $th = thumbs_store($parsed['provider'] ?? ($v['provider'] ?? 'custom'), (string)($v['source_id'] ?? 'manual'), $newThumb);
+            $data['thumb'] = $th['thumb'];
+        }
         if ($v) {
             if ($parsed) $data += ['provider' => $parsed['provider'], 'source_id' => $parsed['source_id'], 'source_url' => $parsed['source_url']];
             db()->update('videos', $v['id'], $data);
@@ -58,7 +63,7 @@ $v = $v ?: ['title' => '', 'slug' => '', 'description' => '', 'embed_url' => '',
 $vCats = split_list($v['categories']);
 admin_header(isset($v['id']) ? 'Editar vídeo' : 'Adicionar vídeo', 'videos');
 ?>
-<form method="post" class="grid2" style="grid-template-columns:minmax(0,1.4fr) minmax(0,1fr)">
+<form method="post" class="grid2 grid-wide">
   <?= csrf_field() ?>
   <div class="card">
     <div class="field"><label>Título</label><input type="text" name="title" value="<?= e($v['title']) ?>" required></div>
@@ -66,7 +71,7 @@ admin_header(isset($v['id']) ? 'Editar vídeo' : 'Adicionar vídeo', 'videos');
     <div class="field"><label>URL do embed</label><input type="text" name="embed_url" value="<?= e($v['embed_url']) ?>" required>
       <small>Pode colar o link da página do vídeo ou o &lt;iframe&gt; — é convertido automaticamente.</small></div>
     <div class="row">
-      <div class="field"><label>Thumbnail (URL)</label><input type="url" name="thumb" value="<?= e($v['thumb']) ?>"></div>
+      <div class="field"><label>Thumbnail</label><input type="text" name="thumb" value="<?= e($v['thumb']) ?>"><small>Cole o link de uma imagem: ela é baixada para o servidor.</small></div>
       <div class="field"><label>Duração</label><input type="text" name="duration" value="<?= e(fmt_duration((int)$v['duration'])) ?>" placeholder="12:34"></div>
     </div>
     <div class="field"><label>Tags (vírgula)</label><input type="text" name="tags" value="<?= e($v['tags']) ?>"></div>
@@ -78,6 +83,11 @@ admin_header(isset($v['id']) ? 'Editar vídeo' : 'Adicionar vídeo', 'videos');
   </div>
   <div>
     <div class="card">
+      <?php if ($v['thumb'] || !empty($v['thumbs'])): ?>
+        <img class="tthumb" style="width:100%;margin-bottom:6px" src="<?= e(thumb_url($v['thumb'])) ?>" alt="">
+        <?php if (!empty($v['thumbs'])): ?><div class="frames" style="margin-bottom:12px"><?php foreach (split_list($v['thumbs']) as $f): ?><img src="<?= e(thumb_url($f)) ?>" alt=""><?php endforeach; ?></div><?php endif; ?>
+        <?php if (!thumb_is_local($v['thumb'])): ?><p class="alert err" style="font-size:12.5px">Thumb ainda não está salva no servidor. Use “Baixar/reparar thumbs” na lista de vídeos.</p><?php endif; ?>
+      <?php endif; ?>
       <?php if ($v['embed_url']): ?><div class="preview" style="display:block;margin:0 0 14px"><div class="player"><iframe src="<?= e($v['embed_url']) ?>" allowfullscreen scrolling="no"></iframe></div></div><?php endif; ?>
       <div class="field"><label>Status</label><select name="status">
         <?php foreach (['published' => 'Publicado', 'draft' => 'Rascunho', 'review' => 'Em revisão (fora do ar)'] as $k => $l): ?><option value="<?= $k ?>" <?= $v['status'] === $k ? 'selected' : '' ?>><?= $l ?></option><?php endforeach; ?>

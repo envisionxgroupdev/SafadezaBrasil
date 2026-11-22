@@ -10,17 +10,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $me = db()->find('admins', $_SESSION['admin_id']);
         $new = $_POST['new'] ?? '';
         if (!$me || !password_verify($_POST['current'] ?? '', $me['password_hash'])) flash('Senha atual incorreta.', 'err');
-        elseif (strlen($new) < 8) flash('A nova senha precisa ter pelo menos 8 caracteres.', 'err');
+        elseif (strlen($new) < 8 || !preg_match('/[A-Za-z]/', $new) || !preg_match('/\d/', $new)) flash('A nova senha precisa ter pelo menos 8 caracteres, com letras e números.', 'err');
+        elseif (password_verify($new, $me['password_hash'])) flash('A nova senha precisa ser diferente da atual.', 'err');
         elseif ($new !== ($_POST['confirm'] ?? '')) flash('As senhas não conferem.', 'err');
         else {
             $upd = ['password_hash' => password_hash($new, PASSWORD_DEFAULT)];
             $user = trim($_POST['username'] ?? '');
             if ($user !== '' && $user !== $me['username']) { $upd['username'] = $user; $_SESSION['admin_user'] = $user; }
+            if (isset($upd['username']) && db()->findBy('admins', 'username', $upd['username'])) { flash('Esse nome de usuário já existe.', 'err'); redirect('settings.php#senha'); }
             db()->update('admins', $me['id'], $upd);
-            flash('Login atualizado.');
+            // desconecta os outros dispositivos e mantém este logado
+            admin_revoke_all_sessions();
+            admin_login_session(db()->find('admins', $me['id']));
+            flash('Login atualizado. Outros dispositivos conectados foram desconectados.');
         }
     } else {
         foreach ($keys as $k) set_setting($k, trim($_POST[$k] ?? ''));
+        set_setting('thumbs_local', !empty($_POST['thumbs_local']) ? '1' : '0');
+        set_setting('thumb_frames', (string)max(0, min(6, (int)($_POST['thumb_frames'] ?? 6))));
         flash('Configurações salvas.');
     }
     redirect('settings.php');
@@ -43,6 +50,15 @@ admin_header('Configurações', 'settings');
         <input type="text" name="color_primary" value="<?= e($s['color_primary']) ?>" placeholder="#ff9000" style="flex:1;padding:10px;border:1px solid var(--line);border-radius:8px">
       </div><small>Padrão: laranja #ff9000. Vazio = padrão.</small></div>
     <div class="field"><label>E-mail de contato</label><input type="email" name="contact_email" value="<?= e($s['contact_email']) ?>"><small>Aparece nas páginas de Contato, DMCA e Termos.</small></div>
+  </div>
+
+  <h2 style="margin-top:10px">Thumbs</h2>
+  <div class="row">
+    <div class="field"><label style="font-weight:500"><input type="checkbox" name="thumbs_local" value="1" <?= setting_on('thumbs_local') ? 'checked' : '' ?>> <b>Salvar as thumbs no meu servidor</b> (recomendado)</label>
+      <small>Garante que as thumbs sempre aparecem. Desligado, o site usa o link do site de origem, que pode quebrar ou expirar.</small></div>
+    <div class="field"><label>Quadros da prévia animada</label>
+      <select name="thumb_frames"><?php foreach ([0, 3, 4, 5, 6] as $n): ?><option value="<?= $n ?>" <?= (int)setting('thumb_frames', 6) === $n ? 'selected' : '' ?>><?= $n ? "$n quadros" : 'Desligada' ?></option><?php endforeach; ?></select>
+      <small>Imagens que vão trocando quando o mouse passa por cima (ou ao rolar no celular).</small></div>
   </div>
 
   <h2 style="margin-top:10px">Anúncios (cole o código HTML da sua rede)</h2>
