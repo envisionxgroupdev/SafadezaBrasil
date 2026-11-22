@@ -27,7 +27,7 @@ function admin_header(string $title, string $active = ''): void {
 <style>:root{--primary:<?= e($primary) ?>}</style>
 </head><body>
 <aside class="sidebar" id="sidebar">
-  <a class="side-brand" href="<?= e(base_url('admin/')) ?>"><?= logo_html() ?><small>PAINEL ADMIN</small></a>
+  <a class="side-brand" href="<?= e(base_url('admin/index.php')) ?>"><?= logo_html() ?><small>PAINEL ADMIN</small></a>
   <nav>
     <?php foreach ($menu as $k => [$ic, $lbl, $href]): ?>
       <a href="<?= e(base_url('admin/' . $href)) ?>" class="<?= $k === $active ? 'active' : '' ?>">

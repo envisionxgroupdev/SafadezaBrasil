@@ -3,10 +3,13 @@
   Options -Indexes
 </IfModule>
 AddDefaultCharset UTF-8
-DirectoryIndex index.php
+DirectoryIndex index.php index.html
 
 <IfModule mod_rewrite.c>
   RewriteEngine On
+  # Endereços de pasta abrem o index.php direto (evita a hospedagem baixar o arquivo em vez de rodar)
+  RewriteRule ^$ index.php [L]
+  RewriteRule ^admin/?$ admin/index.php [L]
   # Bloqueia arquivos internos
   RewriteRule ^(data|install|includes)(/|$) - [F,L]
   RewriteRule \.(sql|json|lock|md|log)$ - [F,L]

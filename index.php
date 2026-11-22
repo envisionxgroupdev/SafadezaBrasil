@@ -15,7 +15,7 @@ require __DIR__ . '/includes/header.php';
 <?php if (!$total): ?>
   <div class="empty">
     <h2>Nenhum vídeo ainda</h2>
-    <p>Entre no <a href="<?= e(base_url('admin/')) ?>" style="color:var(--primary);font-weight:700">painel admin</a> e use o Importador para adicionar vídeos.</p>
+    <p>Entre no <a href="<?= e(base_url('admin/index.php')) ?>" style="color:var(--primary);font-weight:700">painel admin</a> e use o Importador para adicionar vídeos.</p>
   </div>
 <?php else: ?>
 

@@ -2,7 +2,7 @@
 require __DIR__ . '/../includes/bootstrap.php';
 db_upgrade();
 private_page_headers();
-if (is_admin()) redirect(base_url('admin/'));
+if (is_admin()) redirect(base_url('admin/index.php'));
 
 $err = '';
 $user = '';
@@ -29,7 +29,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             unset($_SESSION['pending_2fa']);
             login_log($u['username'], true);
             admin_login_session($u);
-            redirect(base_url('admin/'));
+            redirect(base_url('admin/index.php'));
         } elseif ($u && strlen(preg_replace('/[^A-Za-z0-9]/', '', $code)) === 12 && ($left = recovery_code_use($u['totp_recovery'], $code)) !== null) {
             db()->update('admins', $u['id'], ['totp_recovery' => $left]);
             unset($_SESSION['pending_2fa']);
@@ -62,7 +62,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
                 login_log($user, true);
                 admin_login_session($u);
-                redirect(base_url('admin/'));
+                redirect(base_url('admin/index.php'));
             }
             login_log($user, false);
             usleep(random_int(400000, 900000));

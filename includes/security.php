@@ -36,6 +36,8 @@ function security_headers(): void {
     header('Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=(), usb=()');
     header("Content-Security-Policy: frame-ancestors 'self'; base-uri 'self'; object-src 'none'");
     header('Cross-Origin-Opener-Policy: same-origin-allow-popups');
+    // páginas sempre conferidas com o servidor (evita cache guardar uma resposta quebrada)
+    if (!headers_sent() && stripos(implode("\n", headers_list()), 'Cache-Control') === false) header('Cache-Control: no-cache, must-revalidate');
     if (is_https() && setting('force_https', '') === '1') header('Strict-Transport-Security: max-age=31536000');
 }
 
