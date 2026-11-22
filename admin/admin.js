@@ -8,10 +8,17 @@
     const fd = data instanceof FormData ? data : new FormData();
     if (!(data instanceof FormData)) Object.entries(data || {}).forEach(([k, v]) => fd.append(k, v));
     fd.set('action', action); fd.set('csrf', window.ADMIN.csrf);
-    try {
-      const r = await fetch(window.ADMIN.base + 'admin/import-ajax.php', { method: 'POST', body: fd, credentials: 'same-origin' });
-      return await r.json();
-    } catch (e) { return { ok: false, msg: 'Erro de conexão com o servidor' }; }
+    let r;
+    try { r = await fetch(window.ADMIN.base + 'admin/import-ajax.php', { method: 'POST', body: fd, credentials: 'same-origin' }); }
+    catch (e) { return { ok: false, msg: 'sem conexão com o servidor' }; }
+    const txt = await r.text();
+    try { return JSON.parse(txt); }
+    catch (e) {
+      if (/^\s*<\?php/.test(txt)) return { ok: false, msg: 'a hospedagem não está executando o PHP' };
+      if (r.status === 508 || r.status === 503) return { ok: false, msg: `a hospedagem está sobrecarregada (erro ${r.status}). Aguarde alguns minutos` };
+      if (r.status === 403) return { ok: false, msg: 'acesso bloqueado pelo servidor (403)' };
+      return { ok: false, msg: `resposta inesperada do servidor (HTTP ${r.status})` };
+    }
   }
   const optsFrom = form => {
     const fd = new FormData();
@@ -21,31 +28,58 @@
     return fd;
   };
 
-  /* ========== FILA DE THUMBS (baixa em segundo plano) ========== */
-  const thumbQ = { running: false, ok: 0, fail: 0, el: null, keep: () => false };
+  /* ========== FILA DE THUMBS (baixa em segundo plano, devagar para não sobrecarregar a hospedagem) ========== */
+  const thumbQ = { running: false, ok: 0, fail: 0, el: null, keep: () => false, stop: false };
+  const pause = ms => new Promise(res => setTimeout(res, ms));
   window.runThumbQueue = async (el, keepAlive) => {
     if (el) thumbQ.el = el;
     if (keepAlive) thumbQ.keep = keepAlive;
     if (thumbQ.running) return;
-    thumbQ.running = true;
-    let idle = 0;
-    const show = (r, extra = '') => { if (thumbQ.el) thumbQ.el.innerHTML = `🖼️ Thumbs: <b>${thumbQ.ok}</b> salvas` + (thumbQ.fail ? ` · ${thumbQ.fail} tentativas falharam` : '') + (r ? ` · <b>${r.pending}</b> na fila` : '') + extra; };
-    while (true) {
-      const r = await call('thumbs_batch', { n: 6 });
-      if (!r.ok) { show(null, ` · <span style="color:var(--err)">${esc(r.msg || 'erro')}</span>`); break; }
+    thumbQ.running = true; thumbQ.stop = false;
+    let idle = 0, busy = 0, errors = 0, first = true;
+    const show = (html) => { if (thumbQ.el) { thumbQ.el.style.display = 'block'; thumbQ.el.innerHTML = html; } };
+    const line = (r, extra = '') => {
+      const done = thumbQ.ok, left = r ? r.pending : 0, total = done + left;
+      const pct = total ? Math.round(done / total * 100) : 100;
+      show(`<div class="tq"><div class="tq-top">🖼️ <b>${done}</b> thumbs salvas` + (left ? ` · <b>${left}</b> na fila` : ' · fila vazia') +
+        (thumbQ.fail ? ` · ${thumbQ.fail} falharam (vão aparecer direto do site de origem)` : '') +
+        ` <button type="button" class="btn btn-sm tq-stop">Parar</button></div>` +
+        `<div class="progress" style="display:block"><span style="width:${pct}%"></span></div>${extra}</div>`);
+      const b = thumbQ.el && thumbQ.el.querySelector('.tq-stop'); if (b) b.onclick = () => { thumbQ.stop = true; b.textContent = 'Parando...'; };
+    };
+    show('<div class="tq">⏳ Preparando a fila de thumbs...</div>');
+    while (!thumbQ.stop) {
+      const r = await call('thumbs_batch', { n: 3 });
+      if (!r.ok) {
+        errors++;
+        if (errors >= 3) { show(`<div class="alert err">Não foi possível baixar as thumbs: ${esc(r.msg || 'erro no servidor')}. Tente de novo em alguns minutos.</div>`); break; }
+        await pause(5000); continue;
+      }
+      errors = 0;
+      if (r.problem) { show(`<div class="alert err">🖼️ ${esc(r.problem)}</div>`); break; }
       thumbQ.ok += +r.saved || 0; thumbQ.fail += +r.failed || 0;
-      if (r.problem) { show(r, `<div class="alert err" style="margin-top:8px">${esc(r.problem)}</div>`); break; }
-      show(r);
-      if (r.pending > 0) { idle = 0; continue; }
-      if (thumbQ.keep() && idle < 600) { idle++; await new Promise(res => setTimeout(res, 1500)); continue; }
+      if (r.busy) { busy++; line(r, '<small class="muted">O servidor já está baixando outras thumbs; aguardando a vez...</small>'); await pause(4000); if (busy > 60) break; continue; }
+      busy = 0;
+      line(r);
+      if (first && !r.pending && !r.saved && !r.failed) { show('<div class="tq">✓ Nenhuma thumb faltando.</div>'); break; }
+      first = false;
+      if (r.pending > 0) { idle = 0; await pause(1500); continue; }   // pausa entre lotes: não sobrecarrega a hospedagem
+      if (thumbQ.keep() && idle < 400) { idle++; await pause(3000); continue; }
+      line(r, '<small style="color:var(--ok);font-weight:700">✓ Concluído</small>');
       break;
     }
+    if (thumbQ.stop) line(null, '<small class="muted">Parado. Clique de novo para continuar.</small>');
     thumbQ.running = false;
   };
   $$('[data-thumb-queue]').forEach(btn => btn.addEventListener('click', async () => {
+    const el = $(btn.dataset.thumbQueue);
     btn.disabled = true;
-    if (btn.dataset.requeue) await call('thumbs_requeue', {});
-    await runThumbQueue($(btn.dataset.thumbQueue));
+    if (el) { el.style.display = 'block'; el.innerHTML = '<div class="tq">⏳ Procurando vídeos sem thumb...</div>'; }
+    if (btn.dataset.requeue) {
+      const q = await call('thumbs_requeue', {});
+      if (!q.ok) { if (el) el.innerHTML = `<div class="alert err">${esc(q.msg || 'Erro')}</div>`; btn.disabled = false; return; }
+    }
+    await runThumbQueue(el);
     btn.disabled = false;
   }));
 

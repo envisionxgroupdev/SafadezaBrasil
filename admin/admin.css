@@ -170,3 +170,5 @@ tr:hover td{background:#fafafa}
 .qrbox{display:inline-block;margin:10px 0 6px;padding:6px;background:#fff;border:1px solid var(--line);border-radius:10px;min-width:200px;min-height:200px}
 .secret{font-size:14px;letter-spacing:1px}
 @media(max-width:900px){.codes{grid-template-columns:1fr 1fr}}
+.tq{margin-top:10px;font-size:13.5px}.tq-top{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.tq .progress{margin-top:8px}

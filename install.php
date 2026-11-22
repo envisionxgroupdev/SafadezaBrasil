@@ -182,7 +182,7 @@ $stepNum = ['1' => 1, '2' => 2, '3' => 3, 'done' => 4][$step] ?? 1;
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="robots" content="noindex,nofollow">
 <title>Instalação · <?= e(site_name()) ?></title>
 <link rel="icon" href="<?= e(base_url('assets/img/favicon.svg')) ?>" type="image/svg+xml">
-<link rel="stylesheet" href="<?= e(base_url('assets/css/style.css')) ?>?v=2">
+<link rel="stylesheet" href="<?= e(asset_url('assets/css/style.css')) ?>">
 <style>
   body{background:radial-gradient(circle at 20% 0%,#2a1800 0,#000 55%);min-height:100vh}
   .inst{max-width:640px;margin:0 auto;padding:40px 18px 60px}

@@ -35,7 +35,7 @@ if (!thumbs_is_pending($v) && is_http_url($v['thumb']) && !str_starts_with((stri
 }
 
 // Tenta baixar agora — com limite por visitante, para ninguém usar isso para sobrecarregar o servidor
-if (thumbs_is_pending($v) && rl_hit('thumbdl:' . client_ip(), 40, 60) && rl_hit('thumbdl-video:' . $v['id'], 1, 120)) {
+if (thumbs_is_pending($v) && rl_hit('thumbdl:' . client_ip(), 10, 60) && rl_hit('thumbdl-video:' . $v['id'], 1, 300)) {
     thumbs_process_batch(1, (int)$v['id']);
     $v = db()->find('videos', $v['id']);
     if (thumb_is_local($v['thumb'])) $go(thumb_url($v['thumb']), 86400);

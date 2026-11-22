@@ -113,7 +113,7 @@ function img_open(string $bytes) {
     if ($bytes === '' || strlen($bytes) > THUMB_MAX_BYTES || !function_exists('imagecreatefromstring')) return null;
     $info = @getimagesizefromstring($bytes);
     if (!$info || !in_array($info[2], [IMAGETYPE_JPEG, IMAGETYPE_PNG, IMAGETYPE_GIF, IMAGETYPE_WEBP], true)) return null;
-    if ($info[0] < 80 || $info[1] < 45 || $info[0] * $info[1] > 40000000) return null; // pixel de rastreio / gigante
+    if ($info[0] < 80 || $info[1] < 45 || $info[0] * $info[1] > 9000000) return null; // pixel de rastreio / gigante
     return @imagecreatefromstring($bytes) ?: null;
 }
 /** Recorta no centro em 16:9 e redimensiona (o card é 16:9: o resto seria desperdício) */
@@ -157,7 +157,7 @@ function img_curl_opts(string $referer): array {
 function fetch_images(array $urls, string $referer): array {
     if (!function_exists('curl_multi_init')) return [];
     $mh = curl_multi_init(); $hs = []; $redirects = []; $pins = [];
-    if (defined('CURLMOPT_MAX_TOTAL_CONNECTIONS')) { curl_multi_setopt($mh, CURLMOPT_MAX_TOTAL_CONNECTIONS, 24); curl_multi_setopt($mh, CURLMOPT_MAX_HOST_CONNECTIONS, 8); }
+    if (defined('CURLMOPT_MAX_TOTAL_CONNECTIONS')) { curl_multi_setopt($mh, CURLMOPT_MAX_TOTAL_CONNECTIONS, 8); curl_multi_setopt($mh, CURLMOPT_MAX_HOST_CONNECTIONS, 4); }
     foreach ($urls as $i => $u) {
         if (!is_string($u)) continue;
         if (str_starts_with($u, '//')) $u = 'https:' . $u;
@@ -239,7 +239,9 @@ function thumbs_store_many(array $jobs): array {
         $imgs = [];
         foreach ($raw as $key => $bytes) {
             [$kk, $i] = explode('|', $key);
-            if ((string)$kk === (string)$k && ($im = img_open($bytes))) $imgs[(int)$i] = $im;
+            if ((string)$kk !== (string)$k) continue;
+            if ($im = img_open($bytes)) $imgs[(int)$i] = $im;
+            unset($raw[$key]);           // libera a memória já
         }
         if (!$imgs) continue;
         ksort($imgs);
@@ -270,8 +272,21 @@ function thumbs_pending_count(): int { return db()->count('videos', ['search' =>
  * Processa a fila: baixa as thumbs de até $limit vídeos pendentes em paralelo.
  * Depois de 3 falhas o vídeo sai da fila (a thumb passa a ser carregada direto do site de origem).
  */
-function thumbs_process_batch(int $limit = 6, ?int $onlyId = null): array {
+/** No máximo 2 processos baixando thumbs ao mesmo tempo (protege a hospedagem de sobrecarga) */
+function thumbs_slot() {
+    for ($i = 1; $i <= 2; $i++) {
+        $fp = @fopen(DATA_DIR . "/thumbdl-$i.lock", 'c');
+        if ($fp && flock($fp, LOCK_EX | LOCK_NB)) return $fp;
+        if ($fp) fclose($fp);
+    }
+    return null;
+}
+
+function thumbs_process_batch(int $limit = 3, ?int $onlyId = null): array {
     if (thumbs_problem() !== '') return ['saved' => 0, 'failed' => 0, 'pending' => thumbs_pending_count(), 'writable' => thumbs_dir() !== null];
+    $slot = thumbs_slot();
+    if (!$slot) return ['saved' => 0, 'failed' => 0, 'pending' => thumbs_pending_count(), 'writable' => true, 'busy' => true];
+    @set_time_limit(60);
     $list = $onlyId ? array_filter([db()->find('videos', $onlyId)]) : db()->query('videos', ['search' => [['thumbs'], 'remote:'], 'order' => 'id DESC', 'limit' => $limit]);
     $list = array_values(array_filter($list, 'thumbs_is_pending'));
     $jobs = [];
@@ -284,6 +299,7 @@ function thumbs_process_batch(int $limit = 6, ?int $onlyId = null): array {
         if (!rl_hit('thumbfail:' . $id, 2, 86400)) db()->update('videos', $id, ['thumbs' => 'failed:' . time()]);  // 3ª falha: desiste
     }
     if ($ok) @unlink(__DIR__ . '/../data/cache_tags.json');
+    flock($slot, LOCK_UN); fclose($slot);
     return ['saved' => $ok, 'failed' => $fail, 'pending' => thumbs_pending_count(), 'writable' => thumbs_dir() !== null];
 }
 

@@ -9,3 +9,4 @@ uploads/thumbs/*
 data/*.lock
 data/rl/
 data/security-log.json
+data/thumbdl-*.lock

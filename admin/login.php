@@ -74,7 +74,7 @@ $primary = primary_color();
 ?><!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex"><title>Entrar · <?= e(site_name()) ?></title>
 <link rel="icon" href="<?= e(base_url('assets/img/favicon.svg')) ?>" type="image/svg+xml">
-<link rel="stylesheet" href="<?= e(base_url('admin/admin.css')) ?>?v=4"><style>:root{--primary:<?= e($primary) ?>}</style></head>
+<link rel="stylesheet" href="<?= e(asset_url('admin/admin.css')) ?>"><style>:root{--primary:<?= e($primary) ?>}</style></head>
 <body><div class="login-wrap"><form class="login" method="post" autocomplete="<?= $pending ? 'off' : 'on' ?>">
   <div style="margin-bottom:6px"><?= logo_html('lg') ?></div>
   <?php if ($err): ?><div class="alert err"><?= e($err) ?></div><?php endif; ?>

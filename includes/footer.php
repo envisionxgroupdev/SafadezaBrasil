@@ -27,7 +27,7 @@
 </footer>
 
 <script>window.APP = { base: <?= json_encode(base_url()) ?>, csrf: <?= json_encode(csrf_token()) ?> };</script>
-<script src="<?= e(base_url('assets/js/app.js')) ?>?v=4"></script>
+<script src="<?= e(asset_url('assets/js/app.js')) ?>"></script>
 <?= setting('footer_code', '') ?>
 </body>
 </html>

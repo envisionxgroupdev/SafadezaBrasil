@@ -23,7 +23,7 @@ function admin_header(string $title, string $active = ''): void {
 <meta name="robots" content="noindex,nofollow">
 <title><?= e($title) ?> · Admin <?= e(site_name()) ?></title>
 <link rel="icon" href="<?= e(base_url('assets/img/favicon.svg')) ?>">
-<link rel="stylesheet" href="<?= e(base_url('admin/admin.css')) ?>?v=3">
+<link rel="stylesheet" href="<?= e(asset_url('admin/admin.css')) ?>">
 <style>:root{--primary:<?= e($primary) ?>}</style>
 </head><body>
 <aside class="sidebar" id="sidebar">
@@ -58,7 +58,7 @@ function admin_footer(): void { ?>
   </div>
 </div>
 <script>window.ADMIN = { base: <?= json_encode(base_url()) ?>, csrf: <?= json_encode(csrf_token()) ?> };</script>
-<script src="<?= e(base_url('admin/admin.js')) ?>?v=4"></script>
+<script src="<?= e(asset_url('admin/admin.js')) ?>"></script>
 </body></html>
 <?php }
 

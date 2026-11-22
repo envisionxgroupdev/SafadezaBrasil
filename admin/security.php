@@ -139,7 +139,7 @@ admin_header('Segurança', 'security');
       <button class="btn btn-primary" name="do" value="2fa_confirm">Ativar</button>
       <button class="btn" name="do" value="2fa_cancel" formnovalidate>Cancelar</button>
     </form>
-    <script src="<?= e(base_url('admin/qrcode.js')) ?>?v=1"></script>
+    <script src="<?= e(asset_url('admin/qrcode.js')) ?>"></script>
     <script>(function(){var el=document.getElementById('qr');try{renderQR(el,el.dataset.uri)}catch(e){el.textContent='Use a chave abaixo.'}})();</script>
   <?php else: ?>
     <p class="muted" style="margin-top:-4px"><b>Recomendado.</b> Além da senha, o painel passa a pedir um código que muda a cada 30 segundos no seu celular.

@@ -72,8 +72,7 @@ switch ($_POST['action'] ?? '') {
     }
 
     case 'thumbs_batch': {
-        @set_time_limit(90);
-        out(['ok' => true] + thumbs_process_batch(max(1, min(12, (int)($_POST['n'] ?? 6)))) + ['problem' => thumbs_problem()]);
+        out(['ok' => true] + thumbs_process_batch(max(1, min(4, (int)($_POST['n'] ?? 3)))) + ['problem' => thumbs_problem()]);
     }
 
     case 'thumbs_requeue': {

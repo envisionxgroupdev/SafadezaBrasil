@@ -16,6 +16,11 @@ function base_url(string $path = ''): string {
     return $base . '/' . ltrim($path, '/');
 }
 
+/** Link de CSS/JS com versão automática (muda sempre que o arquivo muda: o navegador nunca usa cópia velha) */
+function asset_url(string $path): string {
+    $f = __DIR__ . '/../' . ltrim($path, '/');
+    return base_url($path) . '?v=' . (is_file($f) ? filemtime($f) : '1');
+}
 function redirect(string $to): void { header('Location: ' . $to); exit; }
 function now(): string { return date('Y-m-d H:i:s'); }
 
