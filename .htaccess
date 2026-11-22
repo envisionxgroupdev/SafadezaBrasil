@@ -1,18 +1,16 @@
-# ---- Safadeza Brasil — regras OPCIONAIS ----
-# O site funciona sem este arquivo. NÃO substitua o .htaccess da sua hospedagem por ele:
-# lá ficam as linhas que ligam o PHP e o HTTPS.
-# Se quiser os "links bonitos" (PRETTY_URLS) ou /sitemap.xml, COPIE o bloco abaixo e
-# COLE NO FINAL do .htaccess que já existe na pasta principal do site.
+# ---- Safadeza Brasil ----
+<IfModule mod_autoindex.c>
+  Options -Indexes
+</IfModule>
+AddDefaultCharset UTF-8
+DirectoryIndex index.php
 
 <IfModule mod_rewrite.c>
   RewriteEngine On
-  # Endereços de pasta abrem o index.php
-  RewriteRule ^$ index.php [L]
-  RewriteRule ^admin/?$ admin/index.php [L]
-  # Bloqueia pastas e arquivos internos
+  # Bloqueia arquivos internos
   RewriteRule ^(data|install|includes)(/|$) - [F,L]
   RewriteRule \.(sql|json|lock|md|log)$ - [F,L]
-  RewriteRule (^|/)\.(?!well-known) - [F,L]
+  RewriteRule (^|/)\. - [F,L]
   # Links bonitos (ative PRETTY_URLS no config.php)
   RewriteRule ^video/([0-9]+)(?:/([^/]*))?/?$ video.php?id=$1&s=$2 [L,QSA]
   RewriteRule ^categoria/([^/]+)/?$ category.php?c=$1 [L,QSA]
@@ -22,7 +20,19 @@
   RewriteRule ^sitemap\.xml$ sitemap.php [L]
 </IfModule>
 
+# Arquivos sensíveis (Apache 2.4 e 2.2)
+<FilesMatch "^(config\.php|.*\.(sql|json|lock|log|md))$">
+  <IfModule mod_authz_core.c>
+    Require all denied
+  </IfModule>
+  <IfModule !mod_authz_core.c>
+    Order allow,deny
+    Deny from all
+  </IfModule>
+</FilesMatch>
+
 <IfModule mod_headers.c>
   Header always set X-Content-Type-Options "nosniff"
+  Header always set Referrer-Policy "strict-origin-when-cross-origin"
   Header always set Rating "RTA-5042-1996-1400-1577-RTA"
 </IfModule>

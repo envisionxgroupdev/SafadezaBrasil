@@ -1,7 +1,15 @@
-# Só imagens podem ser abertas aqui (nada de código)
-<IfModule mod_rewrite.c>
-  RewriteEngine On
-  RewriteRule !\.(webp|jpe?g|png|gif)$ - [F,L,NC]
+# Nada aqui pode ser executado: só imagens
+<FilesMatch "\.(php\d?|phtml|phar|pl|py|cgi|sh|asp|aspx|jsp|htm|html|js|svg)$">
+  <IfModule mod_authz_core.c>
+    Require all denied
+  </IfModule>
+  <IfModule !mod_authz_core.c>
+    Order allow,deny
+    Deny from all
+  </IfModule>
+</FilesMatch>
+<IfModule mod_autoindex.c>
+  Options -Indexes
 </IfModule>
 <IfModule mod_headers.c>
   Header always set X-Content-Type-Options "nosniff"

@@ -54,14 +54,7 @@ desligar a prévia, limpar thumbs sem uso e converter thumbs antigas.
 - **Admin › Segurança** mostra as verificações, eventos de ataque, IPs bloqueados e últimos acessos.
 
 ## Links bonitos (opcional)
-O site **não tem `.htaccess` na pasta principal** de propósito: lá ficam as configurações da hospedagem
-(versão do PHP, HTTPS), e substituí-lo faz o navegador baixar os arquivos `.php`.
-Para links `/video/12/titulo-do-video`, cole o conteúdo de `htaccess-opcional.txt` **no final** do `.htaccess`
-da hospedagem e mude `PRETTY_URLS` para `true` no `config.php`.
-
-### O navegador baixa os arquivos .php em vez de abrir?
-A hospedagem perdeu a linha que liga o PHP. No cPanel: **MultiPHP Manager** → marque o domínio → escolha PHP 8.1+ → **Aplicar**.
-Na Hostinger: **Avançado → Configuração do PHP** → escolha a versão → **Salvar**. Depois reative o HTTPS forçado no painel da hospedagem se ele estava ligado.
+Em Apache, mude `PRETTY_URLS` para `true` no `config.php` → `/video/12/titulo-do-video`.
 
 ## Segurança do conteúdo
 Todo vídeo tem botão "Denunciar". Denúncias de possível menor ou sem consentimento tiram o vídeo do ar na hora até você revisar em Admin > Denúncias.
