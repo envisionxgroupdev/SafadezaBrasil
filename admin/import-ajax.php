@@ -39,7 +39,7 @@ switch ($_POST['action'] ?? '') {
             'description' => $_POST['description'] ?? '', 'models' => $_POST['models'] ?? '', 'featured' => !empty($_POST['featured']),
             'thumbs' => array_values(array_filter((array)json_decode($_POST['thumbs'] ?? '[]', true), 'is_string')),
         ];
-        if (!filter_var($d['embed_url'], FILTER_VALIDATE_URL)) out(['ok' => false, 'msg' => 'URL de embed inválida']);
+        if (!is_http_url($d['embed_url'])) out(['ok' => false, 'msg' => 'URL de embed inválida']);
         [$ok, $r] = importer_save($d, $opts);
         if ($ok) $clear();
         out($ok ? ['ok' => true, 'id' => $r, 'url' => video_url(db()->find('videos', $r))] : ['ok' => false, 'msg' => $r]);

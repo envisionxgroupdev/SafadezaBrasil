@@ -61,6 +61,9 @@ CREATE TABLE IF NOT EXISTS `admins` (
   `id`            INT UNSIGNED NOT NULL AUTO_INCREMENT,
   `username`      VARCHAR(60)  NOT NULL,
   `password_hash` VARCHAR(255) NOT NULL,
+  `totp_secret`   VARCHAR(64)  NULL,
+  `totp_recovery` TEXT         NULL,
+  `totp_last`     INT          NOT NULL DEFAULT 0,
   `created_at`    DATETIME     NOT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `uniq_user` (`username`)

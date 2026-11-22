@@ -6,3 +6,6 @@ data/installed.lock
 .DS_Store
 uploads/thumbs/*
 !uploads/thumbs/.gitkeep
+data/*.lock
+data/rl/
+data/security-log.json

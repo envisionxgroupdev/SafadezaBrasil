@@ -33,17 +33,43 @@ function thumb_abs(?string $t): string {
 }
 function thumb_is_local(?string $t): bool { return $t !== null && $t !== '' && !preg_match('~^https?://~i', $t); }
 
-/** Proteção SSRF: só http/https e só endereços públicos da internet */
-function url_is_public(string $url): bool {
+/**
+ * Proteção SSRF: só http/https e só endereços públicos da internet.
+ * Retorna "host:porta:ip" para FIXAR o IP na conexão (impede o truque de trocar o DNS no meio do caminho) ou null.
+ */
+function url_public_resolve(string $url): ?string {
     $p = parse_url($url);
-    if (!$p || !in_array(strtolower($p['scheme'] ?? ''), ['http', 'https'], true) || empty($p['host'])) return false;
-    $host = trim($p['host'], '[]');
+    if (!$p || !in_array(strtolower($p['scheme'] ?? ''), ['http', 'https'], true) || empty($p['host']) || isset($p['user']) || isset($p['pass'])) return null;
+    $host = strtolower(trim($p['host'], '[]'));
+    $port = (int)($p['port'] ?? (strtolower($p['scheme']) === 'https' ? 443 : 80));
+    if (!in_array($port, [80, 443, 8080, 8443], true)) return null;
     $ips = filter_var($host, FILTER_VALIDATE_IP) ? [$host] : (gethostbynamel($host) ?: []);
-    if (!$ips) return false;
+    if (!$ips) return null;
     foreach ($ips as $ip) {
-        if (!filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE)) return false;
+        if (!filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE)) return null;
     }
-    return true;
+    return "$host:$port:" . $ips[0];
+}
+function url_is_public(string $url): bool { return url_public_resolve($url) !== null; }
+
+/** GET seguro: confere cada redirecionamento e fixa o IP. Retorna [código, corpo] */
+function safe_curl_get(string $url, array $opts = [], int $maxRedirects = 4): array {
+    for ($i = 0; $i <= $maxRedirects; $i++) {
+        if (str_starts_with($url, '//')) $url = 'https:' . $url;
+        $pin = url_public_resolve($url);
+        if (!$pin) return [0, null];
+        $ch = curl_init($url);
+        curl_setopt_array($ch, $opts + [CURLOPT_TIMEOUT => 20, CURLOPT_CONNECTTIMEOUT => 8, CURLOPT_ENCODING => '']);
+        curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_FOLLOWLOCATION => false, CURLOPT_RESOLVE => [$pin],
+            CURLOPT_PROTOCOLS => CURLPROTO_HTTP | CURLPROTO_HTTPS]);
+        $body = curl_exec($ch);
+        $code = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $loc = (string)curl_getinfo($ch, CURLINFO_REDIRECT_URL);
+        curl_close($ch);
+        if ($code >= 300 && $code < 400 && $loc !== '') { $url = $loc; continue; }
+        return [$code, $body === false ? null : $body];
+    }
+    return [0, null];
 }
 
 function provider_referer(string $provider): string {
@@ -91,35 +117,44 @@ function thumb_process(string $bytes): ?array {
 }
 
 /* ---------------- Download ---------------- */
-function curl_img_handle(string $url, string $referer) {
-    $ch = curl_init($url);
-    curl_setopt_array($ch, [
-        CURLOPT_RETURNTRANSFER => true, CURLOPT_FOLLOWLOCATION => true, CURLOPT_MAXREDIRS => 3,
+function img_curl_opts(string $referer): array {
+    return [
         CURLOPT_TIMEOUT => 20, CURLOPT_CONNECTTIMEOUT => 8, CURLOPT_ENCODING => '',
         CURLOPT_USERAGENT => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36',
         CURLOPT_HTTPHEADER => array_values(array_filter(['Accept: image/avif,image/webp,image/*,*/*;q=0.8', $referer ? 'Referer: ' . $referer : null])),
-        CURLOPT_PROTOCOLS => CURLPROTO_HTTP | CURLPROTO_HTTPS, CURLOPT_REDIR_PROTOCOLS => CURLPROTO_HTTP | CURLPROTO_HTTPS,
-    ]);
-    return $ch;
+        CURLOPT_MAXFILESIZE => THUMB_MAX_BYTES,
+    ];
 }
 /** Baixa várias imagens em paralelo. Retorna [indice => bytes] das que responderam. */
 function fetch_images(array $urls, string $referer): array {
     if (!function_exists('curl_multi_init')) return [];
-    $mh = curl_multi_init(); $hs = [];
+    $mh = curl_multi_init(); $hs = []; $redirects = [];
     foreach ($urls as $i => $u) {
+        if (!is_string($u)) continue;
         if (str_starts_with($u, '//')) $u = 'https:' . $u;
-        if (!url_is_public($u)) continue;
-        $hs[$i] = curl_img_handle($u, $referer);
-        curl_multi_add_handle($mh, $hs[$i]);
+        $pin = url_public_resolve($u);
+        if (!$pin) continue;
+        $ch = curl_init($u);
+        curl_setopt_array($ch, img_curl_opts($referer) + [CURLOPT_RETURNTRANSFER => true, CURLOPT_FOLLOWLOCATION => false,
+            CURLOPT_RESOLVE => [$pin], CURLOPT_PROTOCOLS => CURLPROTO_HTTP | CURLPROTO_HTTPS]);
+        curl_multi_add_handle($mh, $ch);
+        $hs[$i] = $ch;
     }
     do { $st = curl_multi_exec($mh, $run); if ($run) curl_multi_select($mh, 1.0); } while ($run && $st === CURLM_OK);
     $out = [];
     foreach ($hs as $i => $ch) {
+        $code = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
         $body = curl_multi_getcontent($ch);
-        if (curl_getinfo($ch, CURLINFO_HTTP_CODE) === 200 && is_string($body) && $body !== '') $out[$i] = $body;
+        if ($code === 200 && is_string($body) && $body !== '') $out[$i] = $body;
+        elseif ($code >= 300 && $code < 400 && ($loc = (string)curl_getinfo($ch, CURLINFO_REDIRECT_URL)) !== '') $redirects[$i] = $loc;
         curl_multi_remove_handle($mh, $ch); curl_close($ch);
     }
     curl_multi_close($mh);
+    // Redirecionamentos (raros): segue um por um, conferindo cada destino
+    foreach ($redirects as $i => $loc) {
+        [$code, $body] = safe_curl_get($loc, img_curl_opts($referer), 3);
+        if ($code === 200 && is_string($body) && $body !== '') $out[$i] = $body;
+    }
     return $out;
 }
 /** Baixa UMA imagem (prévia do painel). Retorna [bytes, ext] já validado. */
@@ -135,6 +170,7 @@ function thumb_fetch(string $url, string $referer = ''): ?array {
  */
 function thumbs_store(string $provider, string $sourceId, string $thumb, array $frames = []): array {
     $thumb = trim($thumb);
+    if ($thumb !== '' && !is_http_url($thumb) && !str_starts_with($thumb, '//')) $thumb = '';
     $maxFrames = max(0, min(6, (int)setting('thumb_frames', 6)));
     $frames = array_slice(array_values(array_unique(array_filter($frames, fn($f) => is_string($f) && $f !== '' && $f !== $thumb))), 0, $maxFrames);
     if (!setting_on('thumbs_local')) return ['thumb' => $thumb, 'thumbs' => ''];

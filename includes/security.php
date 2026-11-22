@@ -18,6 +18,7 @@ const LOGIN_WINDOW_MIN = 15;           // em 15 minutos
 
 function security_boot(): void {
     if (PHP_SAPI === 'cli' || headers_sent()) return;
+    firewall();
     if (setting('force_https', '') === '1' && !is_https() && !empty($_SERVER['HTTP_HOST'])) {
         header('Location: https://' . $_SERVER['HTTP_HOST'] . ($_SERVER['REQUEST_URI'] ?? '/'), true, 301);
         exit;
@@ -33,7 +34,158 @@ function security_headers(): void {
     header('X-Frame-Options: SAMEORIGIN');
     header('Referrer-Policy: strict-origin-when-cross-origin');
     header('Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=(), usb=()');
+    header("Content-Security-Policy: frame-ancestors 'self'; base-uri 'self'; object-src 'none'");
+    header('Cross-Origin-Opener-Policy: same-origin-allow-popups');
     if (is_https() && setting('force_https', '') === '1') header('Strict-Transport-Security: max-age=31536000');
+}
+
+/* ============================================================
+ *  IP REAL DO VISITANTE (com suporte a Cloudflare)
+ * ============================================================ */
+function cloudflare_ranges(): array {
+    return ['173.245.48.0/20', '103.21.244.0/22', '103.22.200.0/22', '103.31.4.0/22', '141.101.64.0/18', '108.162.192.0/18',
+            '190.93.240.0/20', '188.114.96.0/20', '197.234.240.0/22', '198.41.128.0/17', '162.158.0.0/15', '104.16.0.0/13',
+            '104.24.0.0/14', '172.64.0.0/13', '131.0.72.0/22', '2400:cb00::/32', '2606:4700::/32', '2803:f800::/32',
+            '2405:b500::/32', '2405:8100::/32', '2a06:98c0::/29', '2c0f:f248::/32'];
+}
+function ip_in_cidr(string $ip, string $cidr): bool {
+    if (!str_contains($cidr, '/')) return $ip === $cidr;
+    [$net, $bits] = explode('/', $cidr, 2);
+    $a = @inet_pton($ip); $b = @inet_pton($net);
+    if ($a === false || $b === false || strlen($a) !== strlen($b)) return false;
+    $bits = (int)$bits; $bytes = intdiv($bits, 8); $rem = $bits % 8;
+    if (substr($a, 0, $bytes) !== substr($b, 0, $bytes)) return false;
+    if ($rem === 0) return true;
+    $mask = chr((0xff << (8 - $rem)) & 0xff);
+    return (($a[$bytes] & $mask) === ($b[$bytes] & $mask));
+}
+function ip_in_list(string $ip, array $list): bool {
+    foreach ($list as $c) { $c = trim($c); if ($c !== '' && ip_in_cidr($ip, $c)) return true; }
+    return false;
+}
+/** O IP de verdade. Só confia no cabeçalho do Cloudflare se a conexão vier mesmo do Cloudflare (não dá para falsificar). */
+function client_ip(): string {
+    static $ip = null;
+    if ($ip !== null) return $ip;
+    $ip = (string)($_SERVER['REMOTE_ADDR'] ?? '0.0.0.0');
+    $cf = (string)($_SERVER['HTTP_CF_CONNECTING_IP'] ?? '');
+    if ($cf !== '' && filter_var($cf, FILTER_VALIDATE_IP) && ip_in_list($ip, cloudflare_ranges())) $ip = $cf;
+    return $ip;
+}
+
+/* ============================================================
+ *  LIMITADOR DE TAXA (contador por IP/ação, em arquivos)
+ * ============================================================ */
+function rl_file(string $key): string {
+    $dir = DATA_DIR . '/rl';
+    if (!is_dir($dir)) @mkdir($dir, 0755, true);
+    if (mt_rand(1, 200) === 1) rl_gc($dir);
+    return $dir . '/' . sha1($key) . '.json';
+}
+function rl_gc(string $dir): void {
+    foreach ((array)glob($dir . '/*.json') as $f) if (@filemtime($f) < time() - 2 * 86400) @unlink($f);
+}
+/** Registra um acesso e diz se ainda está dentro do limite ($max em $window segundos) */
+function rl_hit(string $key, int $max, int $window): bool {
+    // Caminho rápido: memória (APCu), quando a hospedagem tem
+    if (function_exists('apcu_enabled') && apcu_enabled()) {
+        $k = 'sb_rl_' . sha1($key);
+        $hits = array_values(array_filter((array)apcu_fetch($k), fn($t) => $t > time() - $window));
+        $ok = count($hits) < $max;
+        if ($ok) { $hits[] = time(); apcu_store($k, $hits, $window); }
+        return $ok;
+    }
+    $f = rl_file($key);
+    $fp = @fopen($f, 'c+');
+    if (!$fp) return true;
+    flock($fp, LOCK_EX);
+    $data = json_decode((string)stream_get_contents($fp), true);
+    $now = time();
+    $hits = array_values(array_filter((array)($data['h'] ?? []), fn($t) => $t > $now - $window));
+    $ok = count($hits) < $max;
+    if ($ok) $hits[] = $now;
+    ftruncate($fp, 0); rewind($fp);
+    fwrite($fp, json_encode(['h' => $hits, 'until' => (int)($data['until'] ?? 0)]));
+    flock($fp, LOCK_UN); fclose($fp);
+    return $ok;
+}
+function rl_count(string $key, int $window): int {
+    if (function_exists('apcu_enabled') && apcu_enabled()) return count(array_filter((array)apcu_fetch('sb_rl_' . sha1($key)), fn($t) => $t > time() - $window));
+    $data = @json_decode((string)@file_get_contents(rl_file($key)), true);
+    return count(array_filter((array)($data['h'] ?? []), fn($t) => $t > time() - $window));
+}
+
+/* ============================================================
+ *  FIREWALL: bloqueio de IPs e de ataques comuns
+ * ============================================================ */
+function ip_ban(string $ip, int $seconds, string $reason): void {
+    @file_put_contents(DATA_DIR . '/rl/' . sha1('ban:' . $ip) . '.json', json_encode(['h' => [], 'until' => time() + $seconds, 'reason' => $reason, 'ip' => $ip, 'at' => time()]), LOCK_EX);
+    security_event('ban', "IP $ip bloqueado por " . round($seconds / 3600) . "h: $reason");
+}
+function ip_unban(string $ip): void { @unlink(DATA_DIR . '/rl/' . sha1('ban:' . $ip) . '.json'); }
+function ip_banned(string $ip): bool {
+    if (ip_in_list($ip, preg_split('/[\s,]+/', (string)setting('blocked_ips', '')) ?: [])) return true;
+    $f = DATA_DIR . '/rl/' . sha1('ban:' . $ip) . '.json';
+    if (!is_file($f)) return false;
+    $d = json_decode((string)file_get_contents($f), true);
+    return (int)($d['until'] ?? 0) > time();
+}
+/** Lista os bloqueios automáticos que ainda valem */
+function ip_bans_active(): array {
+    $out = [];
+    foreach ((array)glob(DATA_DIR . '/rl/*.json') as $f) {
+        $d = json_decode((string)@file_get_contents($f), true);
+        if (!empty($d['ip']) && (int)($d['until'] ?? 0) > time()) $out[] = $d;
+    }
+    usort($out, fn($a, $b) => $b['at'] <=> $a['at']);
+    return $out;
+}
+
+function firewall_block(int $code = 403): void {
+    http_response_code($code);
+    header('Content-Type: text/html; charset=utf-8');
+    header('Cache-Control: no-store');
+    exit('<!doctype html><meta charset="utf-8"><title>Acesso bloqueado</title><body style="font-family:system-ui;background:#000;color:#ddd;display:flex;align-items:center;justify-content:center;height:100vh;margin:0"><div style="text-align:center"><h1 style="color:#ff9000">Acesso bloqueado</h1><p>Detectamos atividade suspeita vinda da sua conexão.</p></div>');
+}
+
+function firewall(): void {
+    $ip = client_ip();
+    if (!empty($_SESSION['admin_id'])) return;                 // o admin logado não é barrado
+    if (ip_banned($ip)) firewall_block();
+
+    // Padrões típicos de ataque na URL (SQL injection, XSS, invasão de pastas, execução de código)
+    $uri = (string)($_SERVER['REQUEST_URI'] ?? '');
+    $u = urldecode(urldecode($uri));
+    $patterns = [
+        '~\.\./|\.\.\\\\~', '~<\s*/?\s*(script|iframe|svg|img|object|embed)\b~i', '~\bunion\b[\s\S]{0,40}\bselect\b~i',
+        '~\b(sleep|benchmark|pg_sleep|waitfor\s+delay)\s*\(~i', '~/etc/(passwd|shadow)|/proc/self~i', '~\b(information_schema|load_file|into\s+outfile)\b~i',
+        '~\b(base64_decode|eval|assert|system|passthru|shell_exec|proc_open|popen)\s*\(~i', '~(javascript|vbscript|data)\s*:[^/]~i',
+        '~\bon(error|load|mouseover|focus|click)\s*=~i', '~(php|file|zip|phar|expect|glob)://~i', '~\$\{jndi:~i',
+    ];
+    foreach ($patterns as $re) {
+        if (preg_match($re, $u)) {
+            security_event('attack', 'Bloqueado: ' . mb_substr($uri, 0, 200));
+            if (!rl_hit('fw:' . $ip, 4, 3600)) ip_ban($ip, 86400, 'várias tentativas de ataque');   // 5ª tentativa em 1h = bloqueio de 24h
+            firewall_block();
+        }
+    }
+    // Excesso de acessos (robô/derrubar o site): mais de 600 páginas por minuto do mesmo IP
+    if (!rl_hit('req:' . $ip, 600, 60)) { ip_ban($ip, 3600, 'excesso de acessos por minuto'); firewall_block(429); }
+}
+
+/** Registro de eventos de segurança (últimos 300) */
+function security_event(string $type, string $msg): void {
+    $f = DATA_DIR . '/security-log.json';
+    $fp = @fopen($f, 'c+');
+    if (!$fp) return;
+    flock($fp, LOCK_EX);
+    $list = json_decode((string)stream_get_contents($fp), true) ?: [];
+    array_unshift($list, ['t' => time(), 'type' => $type, 'ip' => client_ip(), 'msg' => $msg]);
+    $list = array_slice($list, 0, 300);
+    ftruncate($fp, 0); rewind($fp); fwrite($fp, json_encode($list, JSON_UNESCAPED_UNICODE)); flock($fp, LOCK_UN); fclose($fp);
+}
+function security_events(int $n = 50): array {
+    return array_slice(json_decode((string)@file_get_contents(DATA_DIR . '/security-log.json'), true) ?: [], 0, $n);
 }
 
 /** Cabeçalhos extras para o painel e o instalador */
@@ -83,11 +235,30 @@ function login_recent_fails(array $where, int $max): int {
     return count(array_filter($rows, fn($r) => strtotime($r['created_at']) >= $limit));
 }
 
-/** Retorna quantos minutos faltam para liberar, ou 0 se pode tentar */
+/** IP de onde o admin já entrou com sucesso nos últimos 30 dias */
+function login_trusted_ip(string $ip): bool {
+    foreach (db()->query('logins', ['where' => ['ip' => $ip, 'success' => 1], 'order' => 'id DESC', 'limit' => 1]) as $r)
+        if (strtotime($r['created_at']) > time() - 30 * 86400) return true;
+    return false;
+}
+
+/**
+ * Retorna quantos minutos faltam para liberar, ou 0 se pode tentar.
+ *  - 5 erros do mesmo IP em 15 min  -> bloqueia 15 min
+ *  - 20 erros do mesmo IP em 24 h   -> IP bloqueado no site inteiro por 24 h
+ *  - 10 erros no mesmo usuário em 15 min (vários IPs) -> só IPs de confiança conseguem tentar
+ */
 function login_blocked(string $user): int {
     $ip = client_ip();
-    if (login_recent_fails(['ip' => $ip], LOGIN_MAX_FAILS_IP) >= LOGIN_MAX_FAILS_IP
-        || ($user !== '' && login_recent_fails(['username' => $user], LOGIN_MAX_FAILS_USER) >= LOGIN_MAX_FAILS_USER)) {
+    $rows = db()->query('logins', ['where' => ['ip' => $ip, 'success' => 0], 'order' => 'id DESC', 'limit' => 20]);
+    if (count(array_filter($rows, fn($r) => strtotime($r['created_at']) > time() - 86400)) >= 20) {
+        ip_ban($ip, 86400, '20 senhas erradas em 24h');
+        return 1440;
+    }
+    if (count(array_filter($rows, fn($r) => strtotime($r['created_at']) >= time() - LOGIN_WINDOW_MIN * 60)) >= LOGIN_MAX_FAILS_IP) {
+        return LOGIN_WINDOW_MIN;
+    }
+    if ($user !== '' && login_recent_fails(['username' => $user], LOGIN_MAX_FAILS_USER) >= LOGIN_MAX_FAILS_USER && !login_trusted_ip($ip)) {
         return LOGIN_WINDOW_MIN;
     }
     return 0;
@@ -138,6 +309,8 @@ function security_checks(): array {
     $c[] = ['Chave de instalação', is_file(install_key_file()) ? 'warn' : 'ok', is_file(install_key_file()) ? 'O arquivo da chave ainda existe.' : 'Removida.', is_file(install_key_file()) ? 'delete_key' : null];
     $weak = $me && (password_verify('admin123', $me['password_hash']) || password_verify('12345678', $me['password_hash']) || password_verify($me['username'], $me['password_hash']));
     $c[] = ['Senha do admin', $weak ? 'bad' : 'ok', $weak ? 'Senha fraca ou padrão. Troque em Configurações.' : 'Senha personalizada.'];
+    $c[] = ['Verificação em duas etapas', !empty($me['totp_secret']) ? 'ok' : 'warn', !empty($me['totp_secret']) ? 'Ativada: o login pede o código do celular.' : 'Desativada. Ative abaixo — é a proteção mais forte contra invasão.'];
+    $c[] = ['Firewall', 'ok', 'Ativo: bloqueia ataques na URL, excesso de acessos e IPs da lista. ' . count(ip_bans_active()) . ' IP(s) bloqueado(s) agora.'];
     $c[] = ['Usuário do admin', in_array(strtolower($_SESSION['admin_user'] ?? ''), ['admin', 'administrador', 'root'], true) ? 'warn' : 'ok',
         in_array(strtolower($_SESSION['admin_user'] ?? ''), ['admin', 'administrador', 'root'], true) ? 'Usuário “admin” é o primeiro que robôs tentam. Prefira outro nome.' : 'Nome de usuário personalizado.'];
     $c[] = ['Conexão segura (HTTPS)', is_https() ? (setting('force_https', '') === '1' ? 'ok' : 'warn') : 'bad',

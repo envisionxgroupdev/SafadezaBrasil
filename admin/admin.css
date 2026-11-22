@@ -164,3 +164,9 @@ tr:hover td{background:#fafafa}
 .storage-box b{display:block;font-family:"Montserrat",sans-serif;font-size:19px}
 .storage-box span{color:var(--muted);font-size:12.5px}
 @media(max-width:900px){.storage-box{grid-template-columns:1fr 1fr}}
+.codes{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin:10px 0}
+.codes code{background:#fff;border:1px solid #cfe9da;padding:7px;text-align:center;font-size:14px;letter-spacing:1px;color:#111}
+.steps2fa{padding-left:20px;line-height:1.6}.steps2fa li{margin-bottom:10px}
+.qrbox{display:inline-block;margin:10px 0 6px;padding:6px;background:#fff;border:1px solid var(--line);border-radius:10px;min-width:200px;min-height:200px}
+.secret{font-size:14px;letter-spacing:1px}
+@media(max-width:900px){.codes{grid-template-columns:1fr 1fr}}

@@ -113,54 +113,131 @@
     });
   }
 
-  /* ========== BUSCAR ========== */
+  /* ========== BUSCAR (várias páginas) ========== */
   const sForm = $('#search-form');
   if (sForm) {
-    let items = [];
-    const grid = $('#search-grid'), box = $('#search-results');
+    const PROVS = ['pornhub', 'redtube', 'eporner'];
+    const grid = $('#search-grid'), box = $('#search-results'), log = $('#search-log');
+    const status = t => $('#search-status').textContent = t;
+    const bar = p => { $('#search-progress').style.display = 'block'; $('#search-bar').style.width = Math.min(100, p) + '%'; };
+    const line = (cls, t) => { log.style.display = 'block'; log.insertAdjacentHTML('beforeend', `<div class="${cls}">${esc(t)}</div>`); if (log.children.length > 400) log.firstChild.remove(); log.scrollTop = log.scrollHeight; };
+    let items = [], seen = new Set(), pages = {}, done = {}, stop = false, busy = false, lastQuery = '';
     const count = () => $('#sel-count').textContent = $$('.ritem.sel', grid).length;
-    const run = async () => {
-      const btn = $('button', sForm); btn.disabled = true; btn.textContent = 'Buscando...';
-      const r = await call('search', new FormData(sForm));
-      btn.disabled = false; btn.textContent = '🔎 Buscar';
-      box.style.display = 'block';
-      if (!r.ok) { grid.innerHTML = `<div class="alert err">${esc(r.msg)}</div>`; items = []; return; }
-      items = r.items;
-      $('#search-info').textContent = `${items.length} resultados (página ${sForm.page.value})`;
-      grid.innerHTML = items.length ? items.map((it, i) => `
-        <div class="ritem ${it.exists ? 'exists' : ''}" data-i="${i}" title="${it.exists ? 'Já está no site' : ''}">
-          <span class="rc"></span>${it.duration_fmt ? `<span class="rd">${esc(it.duration_fmt)}</span>` : ''}
-          <img src="${esc(proxy(it.thumb, it.provider))}" loading="lazy" alt="" onerror="this.src='${esc(proxy('', ''))}'">
-          ${(it.thumbs || []).length ? `<span class="rf">${it.thumbs.length} quadros</span>` : ''}
-          <div class="rt">${esc(it.title)}</div>
-        </div>`).join('') : `<div class="alert info">${esc(r.msg)}</div>`;
-      count();
+    const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+    const reset = () => {
+      items = []; seen = new Set(); pages = {}; done = {}; grid.innerHTML = ''; log.innerHTML = ''; log.style.display = 'none';
+      const start = Math.max(1, +sForm.page.value || 1);
+      provs().forEach(p => { pages[p] = start; done[p] = false; });
     };
-    sForm.addEventListener('submit', e => { e.preventDefault(); run(); });
-    grid.addEventListener('click', e => { const it = e.target.closest('.ritem'); if (it && !it.classList.contains('exists')) { it.classList.toggle('sel'); count(); } });
+    const provs = () => sForm.provider.value === 'all' ? PROVS : [sForm.provider.value];
+    const render = list => {
+      grid.insertAdjacentHTML('beforeend', list.map(it => `
+        <div class="ritem ${it.exists ? 'exists' : ''}" data-i="${it._i}" title="${it.exists ? 'Já está no site' : ''}">
+          <span class="rc"></span>${it.duration_fmt ? `<span class="rd">${esc(it.duration_fmt)}</span>` : ''}
+          <img src="${esc(proxy(it.thumb, it.provider))}" loading="lazy" alt="" onerror="this.onerror=null;this.src='${esc(proxy('', ''))}'">
+          <div class="rt">${esc(it.title)}</div>
+        </div>`).join(''));
+      $('#search-info').textContent = `${items.length} vídeos encontrados`;
+    };
+
+    /** Busca a próxima página de cada site. Retorna quantos vídeos novos vieram. */
+    const fetchRound = async () => {
+      let added = 0;
+      for (const p of provs()) {
+        if (done[p] || stop) continue;
+        const fd = new FormData();
+        fd.append('provider', p); fd.append('q', sForm.q.value); fd.append('order', sForm.order.value); fd.append('page', pages[p]);
+        const r = await call('search', fd);
+        pages[p]++;
+        if (!r.ok || !r.items || !r.items.length) { done[p] = true; if (!r.ok && r.msg) line('err', `${p}: ${r.msg}`); continue; }
+        const fresh = r.items.filter(it => { const k = it.provider + ':' + it.source_id; if (seen.has(k)) return false; seen.add(k); return true; });
+        fresh.forEach(it => { it._i = items.length; items.push(it); });
+        added += fresh.length;
+        render(fresh);
+      }
+      return added;
+    };
+    const exhausted = () => provs().every(p => done[p]);
+
+    const setBusy = b => { busy = b; $$('button[name=mode]', sForm).forEach(x => x.disabled = b); $('#search-stop').disabled = !b; $('#search-more').disabled = b; $('#search-import').disabled = b; };
+
+    /* ---- Modo 1: buscar e escolher ---- */
+    const pick = async (target) => {
+      setBusy(true); box.style.display = 'block'; stop = false;
+      while (items.length < target && !exhausted() && !stop) {
+        await fetchRound();
+        status(`Buscando... ${items.length} de ${target}`); bar(items.length / target * 100);
+      }
+      status(`${items.length} vídeos encontrados` + (exhausted() ? ' (não há mais resultados)' : '') + '. Clique para selecionar ou use “Selecionar todos”.');
+      setBusy(false); count();
+    };
+
+    /* ---- Importação com vários "trabalhadores" ao mesmo tempo ---- */
+    const importQueue = async (queue, total, label, keepFetching) => {
+      const workers = Math.max(1, +sForm.dataset.workers || 1);
+      let ok = 0, skip = 0, err = 0, noThumb = 0, processed = 0;
+      const show = () => { status(`${label}: ${ok} importados · ${skip} já existiam · ${err} erros${noThumb ? ` · ${noThumb} sem thumb` : ''}`); bar((ok + (keepFetching ? 0 : skip + err)) / total * 100); };
+      const worker = async () => {
+        while (!stop && ok < total) {
+          let it = queue.shift();
+          if (!it) {
+            if (keepFetching && !exhausted()) { if (!worker.fetching) { worker.fetching = true; await fetchRound(); worker.fetching = false; queue.push(...items.filter(x => !x.exists && !x._queued).map(x => (x._queued = true, x))); } else await sleep(300); continue; }
+            break;
+          }
+          const fd = optsFrom(sForm);
+          const { _i, _queued, exists, duration_fmt, ...clean } = it;
+          fd.append('item', JSON.stringify(clean));
+          const r = await call('save_one', fd);
+          processed++;
+          const el = grid.querySelector(`.ritem[data-i="${it._i}"]`);
+          if (r.status === 'ok') { ok++; if (!r.local_thumb) noThumb++; line('ok', '✓ ' + it.title); }
+          else if (r.status === 'skip') skip++;
+          else { err++; line('err', '✗ ' + it.title + ' — ' + (r.msg || 'erro')); if (/login|sessão/i.test(r.msg || '')) stop = true; }
+          it.exists = true;
+          if (el) { el.classList.remove('sel'); el.classList.add('exists'); }
+          show();
+        }
+      };
+      await Promise.all(Array.from({ length: workers }, worker));
+      return { ok, skip, err };
+    };
+
+    /* ---- Modo 2: importar tudo automaticamente ---- */
+    const auto = async (target) => {
+      setBusy(true); stop = false; box.style.display = 'block';
+      line('skip', `Importando até ${target} vídeos de “${sForm.q.value}”...`);
+      await fetchRound();
+      const queue = items.filter(x => !x.exists).map(x => (x._queued = true, x));
+      const r = await importQueue(queue, target, 'Importação automática', true);
+      line(stop ? 'skip' : 'ok', stop ? `■ Parado. ${r.ok} importados.` : `— Concluído: ${r.ok} importados${exhausted() && r.ok < target ? ' (acabaram os resultados dessa busca)' : ''} —`);
+      setBusy(false); count();
+    };
+
+    sForm.addEventListener('submit', e => {
+      e.preventDefault();
+      if (busy) return;
+      const mode = e.submitter && e.submitter.value === 'auto' ? 'auto' : 'pick';
+      const target = +sForm.qty.value || 100;
+      const q = provs().join() + '|' + sForm.q.value + '|' + sForm.order.value + '|' + sForm.page.value;
+      if (q !== lastQuery || mode === 'auto') { reset(); lastQuery = q; }
+      if (mode === 'auto') {
+        if (target >= 500 && !confirm(`Importar até ${target} vídeos agora? Pode levar alguns minutos — deixe esta aba aberta.`)) return;
+        auto(target);
+      } else pick(target);
+    });
+    $('#search-stop').addEventListener('click', () => { stop = true; status('Parando...'); });
+    $('#search-more').addEventListener('click', () => { if (!busy) pick(items.length + (+sForm.qty.value || 100)); });
+    grid.addEventListener('click', e => { const it = e.target.closest('.ritem'); if (it && !it.classList.contains('exists') && !busy) { it.classList.toggle('sel'); count(); } });
     $('#search-all').addEventListener('click', () => { $$('.ritem:not(.exists)', grid).forEach(i => i.classList.add('sel')); count(); });
     $('#search-none').addEventListener('click', () => { $$('.ritem', grid).forEach(i => i.classList.remove('sel')); count(); });
-    $('#search-next').addEventListener('click', () => { sForm.page.value = +sForm.page.value + 1; run(); });
     $('#search-import').addEventListener('click', async () => {
-      const els = $$('.ritem.sel', grid);
-      if (!els.length) return alert('Selecione pelo menos um vídeo.');
-      const btn = $('#search-import'); btn.disabled = true;
-      $('#search-progress').style.display = 'block';
-      let ok = 0, skip = 0, err = 0, noThumb = 0;
-      for (let i = 0; i < els.length; i++) {
-        const el = els[i];
-        const fd = optsFrom($('#search-opts'));
-        fd.append('item', JSON.stringify(items[+el.dataset.i]));
-        const r = await call('save_one', fd);
-        if (r.status === 'ok') { ok++; if (!r.local_thumb) noThumb++; el.classList.remove('sel'); el.classList.add('exists'); }
-        else if (r.status === 'skip') { skip++; el.classList.remove('sel'); el.classList.add('exists'); }
-        else err++;
-        $('#search-bar').style.width = ((i + 1) / els.length * 100) + '%';
-        $('#search-status').textContent = `${i + 1}/${els.length} · ${ok} importados · ${skip} já existiam · ${err} erros` + (noThumb ? ` · ${noThumb} sem thumb salva` : '');
-        count();
-      }
-      btn.disabled = false;
-      $('#search-status').textContent += ' — concluído';
+      const sel = $$('.ritem.sel', grid).map(el => items[+el.dataset.i]);
+      if (!sel.length) return alert('Selecione pelo menos um vídeo.');
+      setBusy(true); stop = false;
+      const r = await importQueue(sel.slice(), sel.length, 'Importando selecionados', false);
+      line('ok', `— ${r.ok} importados, ${r.skip} já existiam, ${r.err} erros —`);
+      setBusy(false); count();
     });
   }
 })();
