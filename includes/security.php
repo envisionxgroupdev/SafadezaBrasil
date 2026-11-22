@@ -71,7 +71,14 @@ function client_ip(): string {
     if ($ip !== null) return $ip;
     $ip = (string)($_SERVER['REMOTE_ADDR'] ?? '0.0.0.0');
     $cf = (string)($_SERVER['HTTP_CF_CONNECTING_IP'] ?? '');
-    if ($cf !== '' && filter_var($cf, FILTER_VALIDATE_IP) && ip_in_list($ip, cloudflare_ranges())) $ip = $cf;
+    if ($cf !== '' && filter_var($cf, FILTER_VALIDATE_IP) && ip_in_list($ip, cloudflare_ranges())) return $ip = $cf;
+    // Hospedagem com proxy interno (LiteSpeed/nginx na frente): o IP de conexão é interno e igual para todos.
+    // Nesse caso usa o último IP público do X-Forwarded-For / X-Real-IP (só confia se a conexão vier da rede interna).
+    if (!filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE)) {
+        $cands = array_reverse(array_map('trim', explode(',', (string)($_SERVER['HTTP_X_FORWARDED_FOR'] ?? ''))));
+        $cands[] = (string)($_SERVER['HTTP_X_REAL_IP'] ?? '');
+        foreach ($cands as $c) if (filter_var($c, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE)) return $ip = $c;
+    }
     return $ip;
 }
 
@@ -125,6 +132,7 @@ function rl_count(string $key, int $window): int {
  *  FIREWALL: bloqueio de IPs e de ataques comuns
  * ============================================================ */
 function ip_ban(string $ip, int $seconds, string $reason): void {
+    if (ip_is_internal($ip)) return;   // nunca bane IP interno (derrubaria o site para todos)
     @file_put_contents(DATA_DIR . '/rl/' . sha1('ban:' . $ip) . '.json', json_encode(['h' => [], 'until' => time() + $seconds, 'reason' => $reason, 'ip' => $ip, 'at' => time()]), LOCK_EX);
     security_event('ban', "IP $ip bloqueado por " . round($seconds / 3600) . "h: $reason");
 }
@@ -154,9 +162,12 @@ function firewall_block(int $code = 403): void {
     exit('<!doctype html><meta charset="utf-8"><title>Acesso bloqueado</title><body style="font-family:system-ui;background:#000;color:#ddd;display:flex;align-items:center;justify-content:center;height:100vh;margin:0"><div style="text-align:center"><h1 style="color:#ff9000">Acesso bloqueado</h1><p>Detectamos atividade suspeita vinda da sua conexão.</p></div>');
 }
 
+function ip_is_internal(string $ip): bool { return !filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE); }
+
 function firewall(): void {
     $ip = client_ip();
     if (!empty($_SESSION['admin_id'])) return;                 // o admin logado não é barrado
+    if (ip_is_internal($ip)) return;                           // IP interno da hospedagem = todos os visitantes: nunca bloquear
     if (ip_banned($ip)) firewall_block();
 
     // Padrões típicos de ataque na URL (SQL injection, XSS, invasão de pastas, execução de código)
