@@ -109,6 +109,10 @@ function rl_hit(string $key, int $max, int $window): bool {
     flock($fp, LOCK_UN); fclose($fp);
     return $ok;
 }
+function rl_reset(string $key): void {
+    if (function_exists('apcu_enabled') && apcu_enabled()) apcu_delete('sb_rl_' . sha1($key));
+    @unlink(DATA_DIR . '/rl/' . sha1($key) . '.json');
+}
 function rl_count(string $key, int $window): int {
     if (function_exists('apcu_enabled') && apcu_enabled()) return count(array_filter((array)apcu_fetch('sb_rl_' . sha1($key)), fn($t) => $t > time() - $window));
     $data = @json_decode((string)@file_get_contents(rl_file($key)), true);

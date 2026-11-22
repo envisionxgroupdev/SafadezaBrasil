@@ -291,7 +291,11 @@ function thumbs_process_batch(int $limit = 6, ?int $onlyId = null): array {
 function thumbs_requeue_remote(): int {
     $n = 0; $offset = 0;
     while ($chunk = db()->query('videos', ['search' => [['thumb'], 'http'], 'order' => 'id ASC', 'limit' => 500, 'offset' => $offset])) {
-        foreach ($chunk as $v) if (!thumbs_is_pending($v) && !thumb_is_local($v['thumb'])) { db()->update('videos', $v['id'], ['thumbs' => thumbs_pending_value([])]); $n++; }
+        foreach ($chunk as $v) if (!thumbs_is_pending($v) && !thumb_is_local($v['thumb']) && is_http_url($v['thumb'])) {
+            db()->update('videos', $v['id'], ['thumbs' => thumbs_pending_value([])]);
+            rl_reset('thumbfail:' . $v['id']);
+            $n++;
+        }
         $offset += 500;
     }
     return $n;
