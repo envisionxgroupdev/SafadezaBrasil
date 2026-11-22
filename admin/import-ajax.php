@@ -139,6 +139,19 @@ switch ($_POST['action'] ?? '') {
         out(['ok' => true] + importer_diagnose());
     }
 
+    case 'save_batch': {
+        @set_time_limit(60);
+        $res = [];
+        foreach (array_slice((array)json_decode($_POST['items'] ?? '[]', true), 0, 25) as $it) {
+            if (!is_array($it) || !isset($provs[$it['provider'] ?? ''])) { $res[] = ['status' => 'err', 'msg' => 'Item inválido']; continue; }
+            $it['embed_url'] = str_replace('{id}', (string)$it['source_id'], $provs[$it['provider']]['embed']);
+            [$ok, $r] = importer_save($it, $opts);
+            $res[] = ['status' => $ok ? 'ok' : ($r === 'Já existe no site' ? 'skip' : 'err'), 'msg' => $ok ? '' : $r];
+        }
+        $clear();
+        out(['ok' => true, 'results' => $res]);
+    }
+
     case 'save_one': {
         $it = json_decode($_POST['item'] ?? '', true);
         if (!is_array($it) || !isset($provs[$it['provider'] ?? ''])) out(['ok' => false, 'status' => 'err', 'msg' => 'Item inválido']);

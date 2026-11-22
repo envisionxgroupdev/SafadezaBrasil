@@ -176,3 +176,5 @@ tr:hover td{background:#fafafa}
 .mode-opt:has(input:checked){border-color:var(--primary);background:#fff8ee}
 .mode-opt small{display:block;color:var(--muted);margin-top:3px}
 .mode-opt input{margin-top:4px;accent-color:var(--primary)}
+#throttle-toast{position:fixed;right:18px;bottom:18px;z-index:3000;background:#111;color:#fff;padding:14px 18px;border-radius:10px;
+  box-shadow:0 10px 30px rgba(0,0,0,.35);font-size:14px;max-width:340px;border-left:4px solid var(--primary)}

@@ -4,10 +4,34 @@
   const proxy = (u, p) => u ? window.ADMIN.base + 'admin/thumb.php?p=' + encodeURIComponent(p || '') + '&u=' + encodeURIComponent(u) : window.ADMIN.base + 'assets/img/no-thumb.svg';
   const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
+  /* Pedidos ao servidor: no mínimo 1 s entre eles e, se a hospedagem pedir calma (429/503/508),
+     espera sozinho e repete o MESMO pedido — nada se perde. */
+  let lastCall = 0, chain = Promise.resolve();
+  const toast = (html) => {
+    let t = document.getElementById('throttle-toast');
+    if (!html) { if (t) t.remove(); return; }
+    if (!t) { t = document.createElement('div'); t.id = 'throttle-toast'; document.body.appendChild(t); }
+    t.innerHTML = html;
+  };
   async function call(action, data) {
     const fd = data instanceof FormData ? data : new FormData();
     if (!(data instanceof FormData)) Object.entries(data || {}).forEach(([k, v]) => fd.append(k, v));
     fd.set('action', action); fd.set('csrf', window.ADMIN.csrf);
+    for (let attempt = 0; attempt < 8; attempt++) {
+      const turn = chain.then(async () => { const w = lastCall + 1000 - Date.now(); if (w > 0) await new Promise(r => setTimeout(r, w)); lastCall = Date.now(); });
+      chain = turn.catch(() => {});
+      await turn;
+      const r = await rawCall(fd);
+      if (!r.retry) { toast(''); return r; }
+      for (let s = Math.min(300, Math.max(20, r.retry)); s > 0; s--) {
+        toast(`⏸️ ${esc(r.msg)}.<br>Continuando sozinho em <b>${s}s</b> — não feche a página.`);
+        await new Promise(res => setTimeout(res, 1000));
+      }
+    }
+    toast('');
+    return { ok: false, msg: 'a hospedagem continua bloqueando. Tente de novo mais tarde' };
+  }
+  async function rawCall(fd) {
     let r;
     try { r = await fetch(window.ADMIN.base + 'admin/import-ajax.php', { method: 'POST', body: fd, credentials: 'same-origin' }); }
     catch (e) { return { ok: false, msg: 'sem conexão com o servidor' }; }
@@ -18,6 +42,7 @@
       if (/^\s*<\?php/.test(txt)) return { ok: false, msg: 'a hospedagem não está executando o PHP' };
       if (r.status === 508 || r.status === 503) return { ok: false, http: r.status, retry: 90, msg: `a hospedagem está sobrecarregada (erro ${r.status}). Aguarde alguns minutos` };
       if (r.status === 403) return { ok: false, msg: 'acesso bloqueado pelo servidor (403)' };
+      if (r.status === 0 || r.status >= 520) return { ok: false, http: r.status, retry: 30, msg: 'o servidor não respondeu' };
       return { ok: false, msg: `resposta inesperada do servidor (HTTP ${r.status})` };
     }
   }
@@ -214,8 +239,9 @@
       $$('input[name="categories[]"]', form).forEach(c => c.checked = (d.suggested || []).includes(+c.value));
       $('#single-player').src = d.embed_url;
       form.thumbs.value = JSON.stringify(d.thumbs || []);
-      $('#single-thumbprev').src = proxy(d.thumb, d.provider);
-      $('#single-frames').innerHTML = (d.thumbs || []).map(f => `<img src="${esc(proxy(f, d.provider))}" alt="">`).join('');
+      $('#single-thumbprev').referrerPolicy = 'no-referrer';
+      $('#single-thumbprev').src = d.thumb || proxy('', '');
+      $('#single-frames').innerHTML = (d.thumbs || []).map(f => `<img src="${esc(f)}" referrerpolicy="no-referrer" alt="">`).join('');
       $('#single-src').textContent = d.provider_name + ' · ID ' + d.source_id;
       form.style.display = 'block';
       if (d.exists) show('⚠ Este vídeo já está no site.', 'err');
@@ -224,7 +250,7 @@
     };
     sBtn.addEventListener('click', fetchIt);
     $('#single-input').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); fetchIt(); } });
-    form.thumb.addEventListener('change', () => { $('#single-thumbprev').src = proxy(form.thumb.value, form.provider.value); });
+    form.thumb.addEventListener('change', () => { $('#single-thumbprev').src = form.thumb.value || proxy('', ''); });
 
     form.addEventListener('submit', async e => {
       e.preventDefault();
@@ -298,7 +324,7 @@
       grid.insertAdjacentHTML('beforeend', list.map(it => `
         <div class="ritem ${it.exists ? 'exists' : ''}" data-i="${it._i}" title="${it.exists ? 'Já está no site' : ''}">
           <span class="rc"></span>${it.duration_fmt ? `<span class="rd">${esc(it.duration_fmt)}</span>` : ''}
-          <img src="${esc(proxy(it.thumb, it.provider))}" loading="lazy" alt="" onerror="this.onerror=null;this.src='${esc(proxy('', ''))}'">
+          <img src="${esc(it.thumb || proxy('', ''))}" loading="lazy" referrerpolicy="no-referrer" alt="" onerror="this.onerror=null;this.src='${esc(proxy('', ''))}'">
           <div class="rt">${esc(it.title)}</div>
         </div>`).join(''));
       $('#search-info').textContent = `${items.length} vídeos encontrados`;
@@ -312,6 +338,7 @@
         const fd = new FormData();
         fd.append('provider', p); fd.append('q', sForm.q.value); fd.append('order', sForm.order.value); fd.append('page', pages[p]);
         const r = await call('search', fd);
+        if (!r.ok && /devagar|sobrecarregada|não respondeu|bloqueando/.test(r.msg || '')) { line('err', '⚠ ' + r.msg); stop = true; break; }
         pages[p]++;
         if (!r.ok || !r.items || !r.items.length) {
           done[p] = true;
@@ -344,27 +371,32 @@
     /* ---- Importação com vários "trabalhadores" ao mesmo tempo ---- */
     const importQueue = async (queue, total, label, keepFetching) => {
       runThumbQueue($('#thumb-status'), () => busy);
-      const workers = Math.max(1, +sForm.dataset.workers || 1);
+      const workers = 1;               // um pedido por vez (com 20 vídeos em cada): a hospedagem não bloqueia
       let ok = 0, skip = 0, err = 0, noThumb = 0, processed = 0;
       const show = () => { status(`${label}: ${ok} importados · ${skip} já existiam · ${err} erros${noThumb ? ` · ${noThumb} sem thumb` : ''}`); bar((ok + (keepFetching ? 0 : skip + err)) / total * 100); };
       const worker = async () => {
         while (!stop && ok < total) {
-          let it = queue.shift();
-          if (!it) {
-            if (keepFetching && !exhausted()) { if (!worker.fetching) { worker.fetching = true; await fetchRound(); worker.fetching = false; queue.push(...items.filter(x => !x.exists && !x._queued).map(x => (x._queued = true, x))); } else await sleep(300); continue; }
+          if (!queue.length) {
+            if (keepFetching && !exhausted()) { await fetchRound(); queue.push(...items.filter(x => !x.exists && !x._queued).map(x => (x._queued = true, x))); if (!queue.length && exhausted()) break; continue; }
             break;
           }
+          const batch = queue.splice(0, Math.min(20, total - ok));
           const fd = optsFrom(sForm);
-          const { _i, _queued, exists, duration_fmt, ...clean } = it;
-          fd.append('item', JSON.stringify(clean));
-          const r = await call('save_one', fd);
-          processed++;
-          const el = grid.querySelector(`.ritem[data-i="${it._i}"]`);
-          if (r.status === 'ok') { ok++; line('ok', '✓ ' + it.title); }
-          else if (r.status === 'skip') skip++;
-          else { err++; line('err', '✗ ' + it.title + ' — ' + (r.msg || 'erro')); if (/login|sessão/i.test(r.msg || '')) stop = true; }
-          it.exists = true;
-          if (el) { el.classList.remove('sel'); el.classList.add('exists'); }
+          fd.append('items', JSON.stringify(batch.map(({ _i, _queued, exists, duration_fmt, ...clean }) => clean)));
+          const r = await call('save_batch', fd);
+          if (!r.ok) {
+            if (/login|sessão/i.test(r.msg || '')) { line('err', '✗ ' + r.msg); stop = true; break; }
+            line('err', '✗ ' + (r.msg || 'erro') + ' — tentando o lote de novo'); queue.unshift(...batch); await sleep(5000); continue;
+          }
+          r.results.forEach((x, k) => {
+            const it = batch[k]; processed++;
+            if (x.status === 'ok') { ok++; line('ok', '✓ ' + it.title); }
+            else if (x.status === 'skip') skip++;
+            else { err++; line('err', '✗ ' + it.title + ' — ' + (x.msg || 'erro')); }
+            it.exists = true;
+            const el = grid.querySelector(`.ritem[data-i="${it._i}"]`);
+            if (el) { el.classList.remove('sel'); el.classList.add('exists'); }
+          });
           show();
         }
       };
