@@ -1,7 +1,8 @@
-# ---- Safadeza Brasil ----
-# Versão compatível com qualquer hospedagem (Apache/LiteSpeed).
-# IMPORTANTE: se a sua hospedagem tinha linhas próprias neste arquivo
-# (ex.: "AddHandler application/x-httpd-ea-php81 .php" do cPanel), mantenha-as no topo.
+# ---- Safadeza Brasil — regras OPCIONAIS ----
+# O site funciona sem este arquivo. NÃO substitua o .htaccess da sua hospedagem por ele:
+# lá ficam as linhas que ligam o PHP e o HTTPS.
+# Se quiser os "links bonitos" (PRETTY_URLS) ou /sitemap.xml, COPIE o bloco abaixo e
+# COLE NO FINAL do .htaccess que já existe na pasta principal do site.
 
 <IfModule mod_rewrite.c>
   RewriteEngine On
