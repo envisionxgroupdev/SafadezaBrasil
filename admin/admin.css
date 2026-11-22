@@ -172,3 +172,7 @@ tr:hover td{background:#fafafa}
 @media(max-width:900px){.codes{grid-template-columns:1fr 1fr}}
 .tq{margin-top:10px;font-size:13.5px}.tq-top{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .tq .progress{margin-top:8px}
+.mode-opt{display:flex;gap:10px;align-items:flex-start;border:1px solid var(--line);border-radius:10px;padding:12px;margin-bottom:8px;cursor:pointer;font-weight:400!important}
+.mode-opt:has(input:checked){border-color:var(--primary);background:#fff8ee}
+.mode-opt small{display:block;color:var(--muted);margin-top:3px}
+.mode-opt input{margin-top:4px;accent-color:var(--primary)}

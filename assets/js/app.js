@@ -43,7 +43,7 @@
     let timer = null, i = 0, loaded = false; const orig = img.getAttribute('src');
     a._start = () => {
       if (timer) return;
-      if (!loaded) { frames.forEach(f => { const p = new Image(); p.src = f; }); loaded = true; }
+      if (!loaded) { frames.forEach(f => { const p = new Image(); p.referrerPolicy = 'no-referrer'; p.src = f; }); loaded = true; }
       i = 0; a.classList.add('previewing');
       const step = () => { img.src = frames[i % frames.length]; if (bar) bar.style.width = ((i % frames.length) + 1) / frames.length * 100 + '%'; i++; };
       timer = setTimeout(function run() { step(); timer = setTimeout(run, 650); }, 120);

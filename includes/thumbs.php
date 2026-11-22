@@ -40,7 +40,9 @@ function host_ips(string $host): array {
     if (!$ips && function_exists('dns_get_record')) {
         foreach ((array)@dns_get_record($host, DNS_A | DNS_AAAA) as $r) { $ip = $r['ip'] ?? ($r['ipv6'] ?? null); if ($ip) $ips[] = $ip; }
     }
-    return array_values(array_unique(array_filter($ips)));
+    $ips = array_values(array_unique(array_filter($ips)));
+    usort($ips, fn($a, $b) => (int)str_contains($a, ':') <=> (int)str_contains($b, ':'));   // IPv4 primeiro
+    return $ips;
 }
 /** A hospedagem usa um proxy de saída? (aí o IP conectado é o do proxy, não o do site) */
 function via_proxy(): bool { return (string)(getenv('https_proxy') ?: getenv('HTTPS_PROXY') ?: getenv('all_proxy') ?: '') !== ''; }
@@ -283,6 +285,7 @@ function thumbs_slot() {
 }
 
 function thumbs_process_batch(int $limit = 8, ?int $onlyId = null): array {
+    if (!setting_on('thumbs_local')) return ['saved' => 0, 'failed' => 0, 'pending' => 0, 'writable' => true, 'mode' => 'remote'];
     if (thumbs_problem() !== '') return ['saved' => 0, 'failed' => 0, 'pending' => thumbs_pending_count(), 'writable' => thumbs_dir() !== null];
     $slot = thumbs_slot();
     if (!$slot) return ['saved' => 0, 'failed' => 0, 'pending' => thumbs_pending_count(), 'writable' => true, 'busy' => true];
@@ -304,6 +307,20 @@ function thumbs_process_batch(int $limit = 8, ?int $onlyId = null): array {
     if ($ok) @unlink(__DIR__ . '/../data/cache_tags.json');
     flock($slot, LOCK_UN); fclose($slot);
     return ['saved' => $ok, 'failed' => $fail, 'pending' => thumbs_pending_count(), 'writable' => thumbs_dir() !== null];
+}
+
+/** Modo "direto do site de origem": tira da fila os vídeos pendentes/que falharam e deixa os quadros como links */
+function thumbs_use_remote_all(): int {
+    $n = 0; $offset = 0;
+    while ($chunk = db()->query('videos', ['search' => [['thumbs'], ':'], 'order' => 'id ASC', 'limit' => 500, 'offset' => $offset])) {
+        foreach ($chunk as $v) {
+            $t = (string)$v['thumbs'];
+            if (str_starts_with($t, 'remote:')) { db()->update('videos', $v['id'], ['thumbs' => implode(',', thumbs_remote_frames($v))]); $n++; }
+            elseif (str_starts_with($t, 'failed:')) { db()->update('videos', $v['id'], ['thumbs' => '']); $n++; }
+        }
+        $offset += 500;
+    }
+    return $n;
 }
 
 /** Coloca de volta na fila os vídeos cuja thumb ainda é um link de outro site */
@@ -391,9 +408,14 @@ function thumbs_optimize_local(array $v): ?array {
 function thumb_preview(?string $thumbs): array {
     $t = trim((string)$thumbs);
     if ($t === '') return [];
-    if (str_starts_with($t, 'remote:') || str_starts_with($t, 'failed:')) return [];
+    if (str_starts_with($t, 'remote:')) {                       // ainda não salvos: usa os links do site de origem
+        $f = array_values(array_filter((array)(json_decode(substr($t, 7), true) ?: []), 'is_http_url'));
+        return $f ? ['frames' => $f, 'paths' => []] : [];
+    }
+    if (str_starts_with($t, 'failed:')) return [];
     if (preg_match('/^sprite:(.+):(\d+)$/', $t, $m)) return ['sprite' => thumb_url($m[1]), 'path' => $m[1], 'n' => (int)$m[2]];
-    return ['frames' => array_map('thumb_url', split_list($t)), 'paths' => split_list($t)];
+    $list = split_list($t);
+    return ['frames' => array_map('thumb_url', $list), 'paths' => array_values(array_filter($list, 'thumb_is_local'))];
 }
 
 /** Todos os arquivos locais de um vídeo */
@@ -445,7 +467,7 @@ function fmt_bytes(int $b): string {
 
 /** Explica por que o servidor não consegue salvar thumbs (ou '' se está tudo certo) */
 function thumbs_problem(): string {
-    if (!setting_on('thumbs_local')) return 'A opção “Salvar as thumbs no meu servidor” está desligada (Configurações › Thumbs).';
+    if (!setting_on('thumbs_local')) return '';   // modo "direto do site de origem": nada para baixar
     if (!function_exists('imagecreatefromstring')) return 'A extensão GD do PHP não está ativa. Ative “gd” nas extensões do PHP da hospedagem.';
     if (!function_exists('curl_multi_init')) return 'A extensão cURL do PHP não está ativa.';
     if (thumbs_dir() === null) return 'A pasta uploads/thumbs não tem permissão de escrita. No Gerenciador de Arquivos, dê permissão 755 (ou 775) às pastas “uploads” e “uploads/thumbs”.';

@@ -20,7 +20,7 @@ $prov = importer_providers();
 
 admin_header('Painel', 'index');
 ?>
-<?php $tp = thumbs_pending_count(); $tprob = thumbs_problem(); if ($tp || $tprob): ?>
+<?php $tp = setting_on('thumbs_local') ? thumbs_pending_count() : 0; $tprob = thumbs_problem(); if ($tp || $tprob): ?>
   <div class="alert <?= $tprob ? 'err' : 'info' ?>" style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
     <span style="flex:1;min-width:220px">🖼️ <?= $tprob ? e($tprob) : '<b>' . $tp . '</b> vídeo(s) com thumb ainda não salva no servidor.' ?> <span id="tq-status"></span></span>
     <?php if (!$tprob): ?><button class="btn btn-sm btn-primary" data-thumb-queue="#tq-status">Baixar thumbs agora</button><?php endif; ?>
@@ -41,7 +41,7 @@ admin_header('Painel', 'index');
   <strong style="margin-right:8px">Atalhos:</strong>
   <a class="btn btn-primary" href="import.php">⬇️ Importar vídeos</a>
   <a class="btn" href="video-edit.php">＋ Adicionar manualmente</a>
-  <button type="button" class="btn" data-thumb-queue="#tq-dash" data-requeue="1">🖼️ Baixar thumbs que faltam</button>
+  <?php if (setting_on('thumbs_local')): ?><button type="button" class="btn" data-thumb-queue="#tq-dash" data-requeue="1">🖼️ Baixar thumbs que faltam</button><?php endif; ?>
   <a class="btn" href="categories.php">🗂️ Categorias</a>
   <a class="btn" href="settings.php">⚙️ Configurações</a>
   <span id="tq-dash" class="muted" style="flex-basis:100%"></span>

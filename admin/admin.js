@@ -75,7 +75,7 @@
       first = false;
       if (r.pending > 0) { idle = 0; await pause(4000); continue; }   // pausa entre lotes: não sobrecarrega a hospedagem
       if (thumbQ.keep() && idle < 400) { idle++; await pause(3000); continue; }
-      line(r, '<small style="color:var(--ok);font-weight:700">✓ Concluído</small>');
+      line(r, '<small style="color:var(--ok);font-weight:700">✓ Concluído</small>' + (thumbQ.fail && !thumbQ.ok ? '<div class="alert info" style="margin-top:8px">O seu servidor não está conseguindo baixar as imagens desses sites. Elas continuam aparecendo direto do site de origem. Para não tentar mais baixar, escolha <b>“Direto do site de origem”</b> em <a href="settings.php#thumbs">Configurações › Thumbs</a>.</div>' : ''));
       break;
     }
     if (thumbQ.stop) line(null, '<small class="muted">Parado. Clique de novo para continuar.</small>');

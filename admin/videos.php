@@ -58,7 +58,7 @@ $cats = all_categories(); $catMap = category_map(); $provs = importer_providers(
 
 admin_header('Vídeos', 'videos');
 ?>
-<?php $tp = thumbs_pending_count(); $tprob = thumbs_problem(); if ($tp || $tprob): ?>
+<?php $tp = setting_on('thumbs_local') ? thumbs_pending_count() : 0; $tprob = thumbs_problem(); if ($tp || $tprob): ?>
   <div class="alert <?= $tprob ? 'err' : 'info' ?>" style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
     <span style="flex:1;min-width:220px">🖼️ <?= $tprob ? e($tprob) : '<b>' . $tp . '</b> vídeo(s) com thumb ainda não salva no servidor.' ?> <span id="tq-status"></span></span>
     <?php if (!$tprob): ?><button class="btn btn-sm btn-primary" data-thumb-queue="#tq-status">Baixar thumbs agora</button><?php endif; ?>
@@ -75,7 +75,7 @@ admin_header('Vídeos', 'videos');
   <select name="sort">
     <?php foreach (['id DESC' => 'Mais novos', 'id ASC' => 'Mais antigos', 'views DESC' => 'Mais vistos', 'likes DESC' => 'Mais curtidos', 'title ASC' => 'Título A-Z'] as $k => $l): ?><option value="<?= $k ?>" <?= $sort === $k ? 'selected' : '' ?>><?= $l ?></option><?php endforeach; ?></select>
   <button class="btn">Filtrar</button>
-  <button type="button" class="btn" data-thumb-queue="#tq-vid" data-requeue="1" style="margin-left:auto">🖼️ Baixar thumbs que faltam</button>
+  <?php if (setting_on('thumbs_local')): ?><button type="button" class="btn" data-thumb-queue="#tq-vid" data-requeue="1" style="margin-left:auto">🖼️ Baixar thumbs que faltam</button><?php endif; ?>
   <a class="btn btn-primary" href="video-edit.php">＋ Adicionar</a>
   <span id="tq-vid" class="muted" style="flex-basis:100%"></span>
 </form>

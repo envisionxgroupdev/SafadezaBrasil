@@ -385,7 +385,9 @@ function importer_save(array $d, array $opts = []): array {
     } else {
         // Importação rápida: grava o vídeo já e baixa as thumbs em segundo plano
         [$t0, $f0] = thumbs_clean_list((string)($d['thumb'] ?? ''), $frames);
-        $th = ['thumb' => $t0, 'thumbs' => ($t0 !== '' || $f0) && setting_on('thumbs_local') ? thumbs_pending_value($f0) : ''];
+        $th = setting_on('thumbs_local')
+            ? ['thumb' => $t0, 'thumbs' => ($t0 !== '' || $f0) ? thumbs_pending_value($f0) : '']
+            : ['thumb' => $t0, 'thumbs' => implode(',', $f0)];   // modo "direto do site de origem": guarda só os links
     }
     if (!empty($opts['auto_categories'])) $cats = array_unique(array_merge($cats, importer_guess_categories($title . ' ' . $tags)));
     $id = db()->insert('videos', [

@@ -50,7 +50,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     } else {
         foreach ($keys as $k) set_setting($k, trim($_POST[$k] ?? ''));
-        set_setting('thumbs_local', !empty($_POST['thumbs_local']) ? '1' : '0');
+        $wasLocal = setting_on('thumbs_local');
+        $local = ($_POST['thumbs_mode'] ?? 'local') !== 'remote';
+        set_setting('thumbs_local', $local ? '1' : '0');
+        if ($wasLocal && !$local) { $n = thumbs_use_remote_all(); if ($n) flash("$n vídeo(s) passaram a usar a thumb direto do site de origem."); }
         set_setting('thumb_frames', (string)max(0, min(6, (int)($_POST['thumb_frames'] ?? 6))));
         set_setting('thumb_width', in_array((int)($_POST['thumb_width'] ?? 480), [400, 480, 640], true) ? (string)(int)$_POST['thumb_width'] : '480');
         flash('Configurações salvas.');
@@ -79,8 +82,14 @@ admin_header('Configurações', 'settings');
 
   <h2 style="margin-top:10px" id="thumbs">Thumbs</h2>
   <div class="row">
-    <div class="field"><label style="font-weight:500"><input type="checkbox" name="thumbs_local" value="1" <?= setting_on('thumbs_local') ? 'checked' : '' ?>> <b>Salvar as thumbs no meu servidor</b> (recomendado)</label>
-      <small>Garante que as thumbs sempre aparecem. Desligado, o site usa o link do site de origem, que pode quebrar ou expirar.</small></div>
+    <div class="field" style="grid-column:1/-1"><label>De onde vêm as thumbs</label>
+      <label class="mode-opt"><input type="radio" name="thumbs_mode" value="remote" <?= !setting_on('thumbs_local') ? 'checked' : '' ?>>
+        <span><b>Direto do site de origem</b> — não baixa nada, não ocupa espaço nem pesa na hospedagem. A imagem é carregada do XVideos/Eporner/etc.
+        <small>Alguns links (principalmente Pornhub/RedTube) podem expirar com o tempo.</small></span></label>
+      <label class="mode-opt"><input type="radio" name="thumbs_mode" value="local" <?= setting_on('thumbs_local') ? 'checked' : '' ?>>
+        <span><b>Salvar no meu servidor</b> — as thumbs nunca expiram e carregam mais rápido (~45 KB por vídeo).
+        <small>Precisa que o seu servidor consiga baixar as imagens dos sites (veja “Testar conexão” no importador).</small></span></label>
+    </div>
     <div class="field"><label>Quadros da prévia animada</label>
       <select name="thumb_frames"><?php foreach ([0, 3, 4, 5, 6] as $n): ?><option value="<?= $n ?>" <?= (int)setting('thumb_frames', 6) === $n ? 'selected' : '' ?>><?= $n ? "$n quadros" : 'Desligada' ?></option><?php endforeach; ?></select>
       <small>Ficam todos juntos numa imagem só (~25 KB). Desligada economiza ainda mais.</small></div>
