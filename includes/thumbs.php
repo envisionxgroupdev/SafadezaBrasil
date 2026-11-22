@@ -443,15 +443,58 @@ function thumbs_storage(): array {
     thumbs_scan(function ($f) use (&$bytes, &$files) { $bytes += $f->getSize(); $files++; });
     return ['bytes' => $bytes, 'files' => $files];
 }
+/**
+ * Atualiza a thumb de cada vídeo com o endereço atual do site de origem (lendo de novo os dados do vídeo)
+ * e apaga do servidor as thumbs baixadas. Processa em lotes (cursor salvo nas configurações).
+ */
+function thumbs_refresh_batch(bool $restart = false, int $budget = 15): array {
+    @set_time_limit(60);
+    if ($restart) set_setting('thumb_refresh_cursor', '0');
+    $cursor = (int)setting('thumb_refresh_cursor', 0);
+    $total = db()->count('videos');
+    $start = microtime(true); $done = 0; $updated = 0; $kept = 0;
+    while (microtime(true) - $start < $budget) {
+        $list = []; $off = 0;                                   // próximos 10 vídeos depois do cursor
+        while ($chunk = db()->query('videos', ['order' => 'id ASC', 'limit' => 1000, 'offset' => $off])) {
+            foreach ($chunk as $v) if ((int)$v['id'] > $cursor) { $list[] = $v; if (count($list) >= 10) break 2; }
+            $off += 1000;
+        }
+        if (!$list) break;
+        foreach (array_slice($list, 0, 10) as $v) {
+            if (microtime(true) - $start >= $budget) break 2;
+            $cursor = (int)$v['id'];
+            $done++;
+            $p = importer_parse((string)($v['source_url'] ?: $v['embed_url']));
+            $meta = $p ? importer_fetch_meta($p) : [];
+            $thumb = (string)($meta['thumb'] ?? '');
+            if ($thumb !== '' && is_http_url($thumb)) {
+                [$t0, $frames] = thumbs_clean_list($thumb, (array)($meta['thumbs'] ?? []));
+                thumbs_delete($v);                                     // apaga o que estava baixado
+                db()->update('videos', $v['id'], ['thumb' => $t0, 'thumbs' => implode(',', $frames)]);
+                $updated++;
+            } else {
+                $kept++;                                               // o site não respondeu: mantém como está
+            }
+        }
+        set_setting('thumb_refresh_cursor', (string)$cursor);
+    }
+    set_setting('thumb_refresh_cursor', (string)$cursor);
+    $remaining = 0; $off = 0;
+    while ($chunk = db()->query('videos', ['order' => 'id ASC', 'limit' => 1000, 'offset' => $off])) { foreach ($chunk as $v) if ((int)$v['id'] > $cursor) $remaining++; $off += 1000; }
+    $freed = [0, 0];
+    if ($remaining === 0) $freed = thumbs_clean_orphans(true);           // no fim: apaga tudo que sobrou e ninguém usa
+    return ['done' => $done, 'updated' => $updated, 'kept' => $kept, 'remaining' => $remaining, 'total' => $total, 'freed_files' => $freed[0], 'freed' => fmt_bytes($freed[1])];
+}
+
 /** Apaga arquivos que nenhum vídeo usa mais. Retorna [arquivos, bytes] liberados. */
-function thumbs_clean_orphans(): array {
+function thumbs_clean_orphans(bool $force = false): array {
     $used = [];
     $offset = 0;
     while ($chunk = db()->query('videos', ['limit' => 1000, 'offset' => $offset])) {
         foreach ($chunk as $v) foreach (thumbs_files($v) as $t) $used[$t] = true;
         $offset += 1000;
     }
-    $n = 0; $b = 0; $limit = time() - 3600; // não mexe no que foi baixado na última hora (importação em andamento)
+    $n = 0; $b = 0; $limit = $force ? PHP_INT_MAX : time() - 3600; // não mexe no que foi baixado na última hora (importação em andamento)
     thumbs_scan(function ($f, $rel) use ($used, &$n, &$b, $limit) {
         if (isset($used[$rel]) || $f->getMTime() > $limit) return;
         $size = $f->getSize();

@@ -75,6 +75,10 @@ switch ($_POST['action'] ?? '') {
         out(['ok' => true] + thumbs_process_batch(max(1, min(10, (int)($_POST['n'] ?? 8)))) + ['problem' => thumbs_problem()]);
     }
 
+    case 'thumbs_refresh': {
+        out(['ok' => true] + thumbs_refresh_batch(!empty($_POST['restart'])));
+    }
+
     case 'thumbs_requeue': {
         out(['ok' => true, 'queued' => thumbs_requeue_remote(), 'pending' => thumbs_pending_count()]);
     }

@@ -25,8 +25,9 @@ function redirect(string $to): void { header('Location: ' . $to); exit; }
 function now(): string { return date('Y-m-d H:i:s'); }
 
 /* ---------------- Configurações ---------------- */
+function &settings_cache(): array { static $c = []; return $c; }
 function setting(string $key, $default = null) {
-    static $cache = [];
+    $cache = &settings_cache();
     if (!array_key_exists($key, $cache)) {
         $row = db()->findBy('settings', 'skey', $key);
         $cache[$key] = $row ? $row['svalue'] : null;
@@ -34,6 +35,7 @@ function setting(string $key, $default = null) {
     return $cache[$key] ?? $default;
 }
 function set_setting(string $key, $value): void {
+    $cache = &settings_cache(); $cache[$key] = $value;
     $row = db()->findBy('settings', 'skey', $key);
     if ($row) db()->update('settings', $row['id'], ['svalue' => $value]);
     else db()->insert('settings', ['skey' => $key, 'svalue' => $value]);

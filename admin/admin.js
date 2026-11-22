@@ -93,6 +93,28 @@
     btn.disabled = false;
   }));
 
+  /* ========== ATUALIZAR THUMBS COM O SITE DE ORIGEM ========== */
+  const rBtn = $('#refresh-thumbs');
+  if (rBtn) rBtn.addEventListener('click', async () => {
+    const el = $('#refresh-status'); let first = true, upd = 0, kept = 0, stop = false;
+    rBtn.disabled = true;
+    el.innerHTML = '<div class="tq">⏳ Começando...</div>';
+    while (!stop) {
+      const r = await call('thumbs_refresh', first ? { restart: 1 } : {});
+      if (!r.ok) {
+        const wait = r.retry ? Math.min(300, Math.max(30, r.retry)) : 20;
+        for (let s = wait; s > 0; s--) { el.innerHTML = `<div class="tq">⏸️ ${esc(r.msg || 'erro')}. Continuando sozinho em <b>${s}s</b>...</div>`; await pause(1000); }
+        continue;
+      }
+      first = false; upd += r.updated; kept += r.kept;
+      const pct = r.total ? Math.round((r.total - r.remaining) / r.total * 100) : 100;
+      el.innerHTML = `<div class="tq"><div class="tq-top">🔄 ${r.total - r.remaining} de ${r.total} vídeos · <b>${upd}</b> atualizados` + (kept ? ` · ${kept} sem resposta do site (mantidos)` : '') + `</div><div class="progress" style="display:block"><span style="width:${pct}%"></span></div></div>`;
+      if (r.remaining === 0) { el.innerHTML += `<div class="alert ok" style="margin-top:8px">✓ Pronto! ${upd} thumbs agora vêm do site de origem. ${r.freed_files} arquivo(s) apagados do servidor (${esc(r.freed)} liberados).</div>`; break; }
+      await pause(5000);   // pausa entre lotes para a hospedagem não bloquear
+    }
+    rBtn.disabled = false;
+  });
+
   // Confirmações e "selecionar todos" nas tabelas
   $$('[data-confirm]').forEach(el => el.addEventListener('click', e => { if (!confirm(el.dataset.confirm)) e.preventDefault(); }));
   const checkAll = $('#check-all');

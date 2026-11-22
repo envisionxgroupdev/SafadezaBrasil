@@ -98,6 +98,14 @@ admin_header('Configurações', 'settings');
       <small>Vale para as próximas importações. Formato WebP (leve e aceito por todos os navegadores).</small></div>
   </div>
   <p style="margin:-4px 0 14px"><button type="button" class="btn btn-sm" data-thumb-queue="#tq2" data-requeue="1">🔄 Baixar de novo thumbs que vêm de outros sites</button> <span id="tq2" class="muted"></span></p>
+  <?php if (!setting_on('thumbs_local')): ?>
+  <div class="alert info" style="font-weight:500">
+    <b>Atualizar thumbs com o site de origem</b> — busca de novo a thumb de cada vídeo no site de onde ele veio e <b>apaga as thumbs que tinham sido baixadas</b> para o seu servidor.
+    Vai devagar de propósito (para a hospedagem não bloquear). Deixe esta aba aberta.<br>
+    <button type="button" class="btn btn-primary btn-sm" id="refresh-thumbs" style="margin-top:8px">🔄 Atualizar todas as thumbs agora</button>
+    <div id="refresh-status"></div>
+  </div>
+  <?php endif; ?>
   <div class="storage-box">
     <?php $st = thumbs_storage(); $nv = max(1, db()->count('videos')); ?>
     <div><b><?= fmt_bytes($st['bytes']) ?></b><span>espaço usado pelas thumbs</span></div>
