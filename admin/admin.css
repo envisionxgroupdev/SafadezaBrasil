@@ -159,3 +159,8 @@ tr:hover td{background:#fafafa}
   .vtable .hide-m{display:none}
   .ttitle{max-width:none}
 }
+.storage-box{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:4px 0 18px}
+.storage-box div{background:#fafafa;border:1px solid var(--line);border-radius:10px;padding:12px 14px}
+.storage-box b{display:block;font-family:"Montserrat",sans-serif;font-size:19px}
+.storage-box span{color:var(--muted);font-size:12.5px}
+@media(max-width:900px){.storage-box{grid-template-columns:1fr 1fr}}

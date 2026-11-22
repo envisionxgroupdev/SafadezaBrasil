@@ -240,17 +240,19 @@ function create_default_admin(): void {
 /* ---------------- Card de vídeo ---------------- */
 function video_card(array $v): string {
     $noThumb = base_url('assets/img/no-thumb.svg');
-    $frames = array_map('thumb_url', split_list($v['thumbs'] ?? ''));
+    $pv = thumb_preview($v['thumbs'] ?? '');
+    $attr = isset($pv['sprite']) ? ' data-sprite="' . e($pv['sprite']) . '" data-n="' . (int)$pv['n'] . '"'
+          : (!empty($pv['frames']) ? ' data-frames="' . e(implode('|', $pv['frames'])) . '"' : '');
     $dur = fmt_duration((int)$v['duration']);
     $pct = rating_pct($v);
     $hd = (int)$v['duration'] >= 0 && preg_match('/\b(hd|1080|720|4k)\b/i', $v['title'] . ' ' . $v['tags']);
     return '<article class="card">
-      <a href="' . e(video_url($v)) . '" class="thumb"' . ($frames ? ' data-frames="' . e(implode('|', $frames)) . '"' : '') . '>
+      <a href="' . e(video_url($v)) . '" class="thumb"' . $attr . '>
         <img src="' . e(thumb_url($v['thumb'])) . '" alt="' . e($v['title']) . '" loading="lazy" decoding="async" referrerpolicy="no-referrer" onerror="this.onerror=null;this.src=\'' . e($noThumb) . '\'">
         ' . ($hd ? '<span class="hd">HD</span>' : '') . '
         ' . ($dur ? '<span class="dur">' . $dur . '</span>' : '') . '
         ' . (!empty($v['featured']) ? '<span class="badge">Destaque</span>' : '') . '
-        ' . ($frames ? '<span class="pbar"><i></i></span>' : '') . '
+        ' . ($attr ? '<span class="pbar"><i></i></span>' : '') . '
       </a>
       <a href="' . e(video_url($v)) . '" class="title">' . e($v['title']) . '</a>
       <div class="meta"><span>' . fmt_views((int)$v['views']) . ' views</span>' . ($pct ? '<span class="up">' . $pct . '%</span>' : '') . '<span class="ago">' . time_ago($v['created_at']) . '</span></div>

@@ -31,7 +31,7 @@ $sortNow = $_GET['sort'] ?? '';
 <meta property="og:site_name" content="<?= e(site_name()) ?>">
 <link rel="icon" href="<?= e(base_url('assets/img/favicon.svg')) ?>" type="image/svg+xml">
 <link rel="preload" href="<?= e(base_url('assets/fonts/montserrat.woff')) ?>" as="font" type="font/woff" crossorigin>
-<link rel="stylesheet" href="<?= e(base_url('assets/css/style.css')) ?>?v=3">
+<link rel="stylesheet" href="<?= e(base_url('assets/css/style.css')) ?>?v=4">
 <style>:root{--primary:<?= e($primary) ?>}</style>
 <?= setting('head_code', '') ?>
 </head>

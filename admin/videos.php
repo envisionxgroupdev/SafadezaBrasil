@@ -19,7 +19,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             case 'unfeature': db()->update('videos', $id, ['featured' => 0]); break;
             case 'delete':    thumbs_delete($v); db()->delete('videos', $id); break;
             case 'fixthumbs':
-                if (!thumb_is_local($v['thumb'])) {
+                if (thumb_is_local($v['thumb'])) {
+                    if ($new = thumbs_optimize_local($v)) db()->update('videos', $id, $new);
+                } else {
                     $meta = ($p = importer_parse($v['source_url'] ?: $v['embed_url'])) ? importer_fetch_meta($p) : [];
                     $th = thumbs_store($v['provider'], (string)$v['source_id'], ($meta['thumb'] ?? '') ?: (string)$v['thumb'], $meta['thumbs'] ?? []);
                     if ($th['thumb'] !== '') db()->update('videos', $id, $th);
@@ -79,7 +81,7 @@ admin_header('Vídeos', 'videos');
       <option value="publish">Publicar</option><option value="draft">Mover p/ rascunho</option>
       <option value="feature">Marcar destaque</option><option value="unfeature">Tirar destaque</option>
       <option value="addcat">Adicionar à categoria →</option><option value="delcat">Remover da categoria →</option>
-      <option value="fixthumbs">Baixar/reparar thumbs</option>
+      <option value="fixthumbs">Baixar/otimizar thumbs</option>
       <option value="delete">Excluir</option>
     </select>
     <select name="bulk_cat"><option value="0">(categoria)</option><?php foreach ($cats as $c): ?><option value="<?= $c['id'] ?>"><?= e($c['name']) ?></option><?php endforeach; ?></select>

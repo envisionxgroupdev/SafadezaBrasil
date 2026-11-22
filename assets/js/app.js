@@ -13,10 +13,32 @@
   }
 
   // Prévia animada da thumb (mouse por cima no PC; rolando a tela no celular)
-  const cards = document.querySelectorAll('.thumb[data-frames]');
+  const cards = document.querySelectorAll('.thumb[data-frames], .thumb[data-sprite]');
   cards.forEach(a => {
+    const bar = a.querySelector('.pbar i');
+    // Formato leve: todos os quadros numa imagem só ("sprite")
+    if (a.dataset.sprite) {
+      const n = Math.max(2, +a.dataset.n || 2);
+      let layer = null, timer = null, i = 0;
+      a._start = () => {
+        if (timer) return;
+        if (!layer) {
+          layer = document.createElement('span'); layer.className = 'sprite';
+          layer.style.backgroundImage = 'url("' + a.dataset.sprite.replace(/"/g, '%22') + '")';
+          layer.style.backgroundSize = (n * 100) + '% 100%';
+          a.insertBefore(layer, a.querySelector('img').nextSibling);
+        }
+        i = 0; a.classList.add('previewing');
+        const step = () => { const k = i % n; layer.style.backgroundPosition = (k / (n - 1) * 100) + '% 0'; if (bar) bar.style.width = (k + 1) / n * 100 + '%'; i++; };
+        timer = setTimeout(function run() { step(); timer = setTimeout(run, 650); }, 120);
+      };
+      a._stop = () => { clearTimeout(timer); timer = null; a.classList.remove('previewing'); if (bar) bar.style.width = '0'; };
+      a.addEventListener('mouseenter', a._start);
+      a.addEventListener('mouseleave', a._stop);
+      return;
+    }
     const frames = a.dataset.frames.split('|').filter(Boolean);
-    const img = a.querySelector('img'); const bar = a.querySelector('.pbar i');
+    const img = a.querySelector('img');
     if (!img || !frames.length) return;
     let timer = null, i = 0, loaded = false; const orig = img.getAttribute('src');
     a._start = () => {
