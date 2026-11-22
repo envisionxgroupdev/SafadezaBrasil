@@ -92,9 +92,9 @@ require __DIR__ . '/includes/header.php';
     <?php if ($ad = setting('ad_sidebar', '')): ?><div class="ad ad-side"><?= $ad ?></div><?php endif; ?>
     <h3>Vídeos relacionados</h3>
     <div class="side-list">
-      <?php foreach ($related as $r): $th = video_thumb_url($r); ?>
+      <?php foreach ($related as $r): $th = video_thumb_url($r); $rpv = thumb_preview($r['thumbs'] ?? ''); ?>
       <a class="side-item" href="<?= e(video_url($r)) ?>">
-        <span class="thumb"><img src="<?= e($th) ?>" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" onerror="this.onerror=null;this.src='<?= e(base_url('assets/img/no-thumb.svg')) ?>'">
+        <span class="thumb"<?= !empty($rpv['frames']) ? ' data-frames="' . e(implode('|', $rpv['frames'])) . '"' : '' ?>><img src="<?= e($th) ?>" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" onerror="window.thumbFail?thumbFail(this):(this.onerror=null,this.src='<?= e(base_url('assets/img/no-thumb.svg')) ?>')">
           <?php if ($d = fmt_duration((int)$r['duration'])): ?><span class="dur"><?= $d ?></span><?php endif; ?></span>
         <span><span class="t"><?= e($r['title']) ?></span><span class="meta"><span><?= fmt_views((int)$r['views']) ?> views</span></span></span>
       </a>

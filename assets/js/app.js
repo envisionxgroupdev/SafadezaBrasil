@@ -1,6 +1,19 @@
 (function () {
   const $ = (s, c = document) => c.querySelector(s);
 
+  // Thumb que não carrega: tenta os outros quadros do vídeo antes de mostrar a imagem padrão
+  const NO_THUMB = ((window.APP && window.APP.base) || '/') + 'assets/img/no-thumb.svg';
+  window.thumbFail = img => {
+    const box = img.closest('[data-frames]');
+    const list = box ? box.dataset.frames.split('|').filter(Boolean) : [];
+    const tried = (img.dataset.tried || '').split('|');
+    tried.push(img.getAttribute('src'));
+    const next = list.find(f => !tried.includes(f));
+    img.dataset.tried = tried.join('|');
+    if (next) { img.src = next; if (box && box._setOrig) box._setOrig(next); }
+    else { img.onerror = null; img.src = NO_THUMB; img.classList.add('no-thumb'); }
+  };
+
   // Age gate
   const gate = $('#agegate');
   if (gate) {
@@ -40,7 +53,8 @@
     const frames = a.dataset.frames.split('|').filter(Boolean);
     const img = a.querySelector('img');
     if (!img || !frames.length) return;
-    let timer = null, i = 0, loaded = false; const orig = img.getAttribute('src');
+    let timer = null, i = 0, loaded = false; let orig = img.getAttribute('src');
+    a._setOrig = u => { orig = u; };
     a._start = () => {
       if (timer) return;
       if (!loaded) { frames.forEach(f => { const p = new Image(); p.referrerPolicy = 'no-referrer'; p.src = f; }); loaded = true; }
@@ -121,4 +135,5 @@
       f.reset();
     });
   }
+  document.querySelectorAll('.thumb img').forEach(img => { if (img.complete && img.naturalWidth === 0 && !img.src.endsWith('no-thumb.svg')) window.thumbFail(img); });
 })();

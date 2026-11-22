@@ -76,7 +76,9 @@ admin_header('Vídeos', 'videos');
     <?php foreach (['id DESC' => 'Mais novos', 'id ASC' => 'Mais antigos', 'views DESC' => 'Mais vistos', 'likes DESC' => 'Mais curtidos', 'title ASC' => 'Título A-Z'] as $k => $l): ?><option value="<?= $k ?>" <?= $sort === $k ? 'selected' : '' ?>><?= $l ?></option><?php endforeach; ?></select>
   <button class="btn">Filtrar</button>
   <?php if (setting_on('thumbs_local')): ?><button type="button" class="btn" data-thumb-queue="#tq-vid" data-requeue="1" style="margin-left:auto">🖼️ Baixar thumbs que faltam</button><?php endif; ?>
+  <button type="button" class="btn" id="check-thumbs">🔍 Verificar thumbs quebradas</button>
   <a class="btn btn-primary" href="video-edit.php">＋ Adicionar</a>
+  <div id="check-out" style="flex-basis:100%"></div>
   <span id="tq-vid" class="muted" style="flex-basis:100%"></span>
 </form>
 

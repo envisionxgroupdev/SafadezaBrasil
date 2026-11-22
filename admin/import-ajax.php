@@ -75,6 +75,57 @@ switch ($_POST['action'] ?? '') {
         out(['ok' => true] + thumbs_process_batch(max(1, min(10, (int)($_POST['n'] ?? 8)))) + ['problem' => thumbs_problem()]);
     }
 
+    /* ---- Verificador de thumbs quebradas (o navegador testa, o servidor conserta) ---- */
+    case 'thumb_list': {
+        $off = max(0, (int)($_POST['offset'] ?? 0));
+        $rows = db()->query('videos', ['order' => 'id DESC', 'limit' => 300, 'offset' => $off]);
+        $names = importer_providers();
+        out(['ok' => true, 'total' => db()->count('videos'), 'items' => array_map(fn($v) => [
+            'id' => (int)$v['id'], 'title' => mb_substr($v['title'], 0, 80), 'provider' => $names[$v['provider']]['name'] ?? $v['provider'],
+            'thumb' => video_thumb_url($v), 'frames' => thumb_preview($v['thumbs'] ?? '')['frames'] ?? [],
+        ], $rows)]);
+    }
+    case 'thumb_fix': {
+        $n = 0;
+        foreach ((array)json_decode($_POST['items'] ?? '[]', true) as $it) {
+            $v = db()->find('videos', (int)($it['id'] ?? 0));
+            $u = (string)($it['thumb'] ?? '');
+            if (!$v || !is_http_url($u)) continue;
+            $frames = thumb_preview($v['thumbs'] ?? '')['frames'] ?? [];
+            if (!in_array($u, $frames, true)) continue;                    // só aceita um quadro do próprio vídeo
+            db()->update('videos', $v['id'], ['thumb' => $u, 'thumbs' => implode(',', array_values(array_diff($frames, [$u])))]);
+            $n++;
+        }
+        out(['ok' => true, 'fixed' => $n]);
+    }
+    case 'thumb_refresh_ids': {
+        @set_time_limit(60);
+        $res = []; $start = microtime(true);
+        foreach (array_slice(array_map('intval', (array)json_decode($_POST['ids'] ?? '[]', true)), 0, 15) as $id) {
+            if (microtime(true) - $start > 20) break;
+            $v = db()->find('videos', $id);
+            if (!$v) continue;
+            $p = importer_parse((string)($v['source_url'] ?: $v['embed_url']));
+            $meta = $p ? importer_fetch_meta($p) : [];
+            $ok = !empty($meta['thumb']) && is_http_url($meta['thumb']);
+            if ($ok) {
+                [$t0, $fr] = thumbs_clean_list($meta['thumb'], (array)($meta['thumbs'] ?? []));
+                thumbs_delete($v);
+                db()->update('videos', $id, ['thumb' => $t0, 'thumbs' => implode(',', $fr)]);
+                $res[] = ['id' => $id, 'ok' => true, 'thumb' => $t0, 'frames' => $fr];
+            } else $res[] = ['id' => $id, 'ok' => false, 'why' => $p ? http_explain(http_last(), null) : 'link do vídeo não reconhecido'];
+        }
+        out(['ok' => true, 'results' => $res]);
+    }
+    case 'delete_ids': {
+        $n = 0;
+        foreach (array_map('intval', (array)json_decode($_POST['ids'] ?? '[]', true)) as $id) {
+            if ($v = db()->find('videos', $id)) { thumbs_delete($v); db()->delete('videos', $id); $n++; }
+        }
+        $clear();
+        out(['ok' => true, 'deleted' => $n]);
+    }
+
     case 'thumbs_refresh': {
         out(['ok' => true] + thumbs_refresh_batch(!empty($_POST['restart'])));
     }

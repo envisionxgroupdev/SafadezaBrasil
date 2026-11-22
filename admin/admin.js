@@ -115,6 +115,74 @@
     rBtn.disabled = false;
   });
 
+  /* ========== VERIFICAR THUMBS QUEBRADAS (o navegador testa cada imagem) ========== */
+  const cBtn = $('#check-thumbs');
+  if (cBtn) cBtn.addEventListener('click', async () => {
+    const out = $('#check-out');
+    const box = h => { out.innerHTML = `<div class="card" style="margin-top:12px">${h}</div>`; };
+    const loads = url => new Promise(res => {
+      if (!url || url.endsWith('no-thumb.svg')) return res(false);
+      const im = new Image(); let done = false;
+      const fin = ok => { if (!done) { done = true; res(ok && im.naturalWidth > 20); } };
+      im.referrerPolicy = 'no-referrer'; im.onload = () => fin(true); im.onerror = () => fin(false);
+      setTimeout(() => fin(false), 12000); im.src = url;
+    });
+    const pool = async (list, n, fn) => { let i = 0; await Promise.all(Array.from({ length: n }, async () => { while (i < list.length) { const it = list[i++]; await fn(it); } })); };
+    cBtn.disabled = true;
+    // 1) carrega a lista
+    let items = [], off = 0, total = 0;
+    box('⏳ Carregando a lista de vídeos...');
+    while (true) { const r = await call('thumb_list', { offset: off }); if (!r.ok) { box(`<div class="alert err">${esc(r.msg)}</div>`); cBtn.disabled = false; return; } total = r.total; items.push(...r.items); off += 300; if (!r.items.length || off >= total) break; }
+    // 2) testa no navegador
+    let tested = 0; const broken = [], fixes = [];
+    await pool(items, 12, async it => {
+      if (!(await loads(it.thumb))) {
+        let alt = null;
+        for (const f of it.frames) { if (await loads(f)) { alt = f; break; } }
+        if (alt) fixes.push({ id: it.id, thumb: alt }); else broken.push(it);
+      }
+      tested++;
+      if (tested % 10 === 0 || tested === items.length) box(`🔍 Testando thumbs no seu navegador: <b>${tested}</b> de ${items.length}<div class="progress" style="display:block"><span style="width:${Math.round(tested / items.length * 100)}%"></span></div>`);
+    });
+    // 3) conserta trocando por um quadro que funciona
+    if (fixes.length) for (let i = 0; i < fixes.length; i += 50) await call('thumb_fix', { items: JSON.stringify(fixes.slice(i, i + 50)) });
+    const render = (extra = '') => {
+      const by = {}; broken.forEach(b => by[b.provider] = (by[b.provider] || 0) + 1);
+      box(`<h2>Resultado</h2><p>✓ <b>${items.length - broken.length - fixes.length}</b> thumbs funcionando` + (fixes.length ? ` · 🔧 <b>${fixes.length}</b> consertadas (trocadas por outro quadro do vídeo)` : '') +
+        ` · ✗ <b>${broken.length}</b> quebradas</p>` +
+        (broken.length ? `<p class="muted">Quebradas por site: ${Object.entries(by).map(([k, n]) => `<b>${esc(k)}</b>: ${n}`).join(' · ')}</p>
+         <div style="display:flex;gap:8px;flex-wrap:wrap"><button type="button" class="btn btn-primary" id="cb-refresh">🔄 Buscar de novo no site de origem (${broken.length})</button>
+         <button type="button" class="btn btn-danger" id="cb-delete">🗑 Excluir os ${broken.length} vídeos sem thumb</button></div>
+         <details style="margin-top:10px"><summary>Ver lista</summary><ul style="max-height:240px;overflow:auto">${broken.slice(0, 500).map(b => `<li><a href="video-edit.php?id=${b.id}">${esc(b.title)}</a> <small class="muted">(${esc(b.provider)})</small></li>`).join('')}</ul></details>` : '') + extra);
+      const rb = $('#cb-refresh'), db = $('#cb-delete');
+      if (rb) rb.onclick = async () => {
+        rb.disabled = true; db.disabled = true;
+        const ids = broken.map(b => b.id); let i = 0, fixed = 0, still = [];
+        while (i < ids.length) {
+          box(`🔄 Buscando de novo no site de origem: ${i} de ${ids.length}<div class="progress" style="display:block"><span style="width:${Math.round(i / ids.length * 100)}%"></span></div>`);
+          const r = await call('thumb_refresh_ids', { ids: JSON.stringify(ids.slice(i, i + 15)) });
+          if (!r.ok) { const w = r.retry ? Math.min(300, r.retry) : 20; for (let s = w; s > 0; s--) { box(`⏸️ ${esc(r.msg)}. Continuando em ${s}s...`); await pause(1000); } continue; }
+          for (const x of r.results) {
+            let ok = false;
+            if (x.ok) { ok = await loads(x.thumb); if (!ok) for (const f of x.frames) { if (await loads(f)) { await call('thumb_fix', { items: JSON.stringify([{ id: x.id, thumb: f }]) }); ok = true; break; } } }
+            if (ok) fixed++; else still.push(broken.find(b => b.id === x.id));
+          }
+          i += 15; await pause(3000);
+        }
+        broken.length = 0; broken.push(...still.filter(Boolean));
+        render(`<div class="alert ${fixed ? 'ok' : 'info'}" style="margin-top:10px">${fixed} consertadas buscando de novo.` + (broken.length ? ` As ${broken.length} restantes o site de origem não entregou uma thumb que funcione (vídeo removido, link expirado ou site bloqueando).` : '') + `</div>`);
+      };
+      if (db) db.onclick = async () => {
+        if (!confirm(`Excluir ${broken.length} vídeos sem thumb?`)) return;
+        const ids = broken.map(b => b.id); let n = 0;
+        for (let i = 0; i < ids.length; i += 100) { const r = await call('delete_ids', { ids: JSON.stringify(ids.slice(i, i + 100)) }); n += r.deleted || 0; }
+        broken.length = 0; render(`<div class="alert ok" style="margin-top:10px">${n} vídeos excluídos.</div>`);
+      };
+    };
+    render();
+    cBtn.disabled = false;
+  });
+
   // Confirmações e "selecionar todos" nas tabelas
   $$('[data-confirm]').forEach(el => el.addEventListener('click', e => { if (!confirm(el.dataset.confirm)) e.preventDefault(); }));
   const checkAll = $('#check-all');
