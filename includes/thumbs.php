@@ -33,43 +33,71 @@ function thumb_abs(?string $t): string {
 }
 function thumb_is_local(?string $t): bool { return $t !== null && $t !== '' && !preg_match('~^https?://~i', $t); }
 
+/** IPs de um domínio (com plano B quando a hospedagem desativa gethostbynamel) */
+function host_ips(string $host): array {
+    if (filter_var($host, FILTER_VALIDATE_IP)) return [$host];
+    $ips = function_exists('gethostbynamel') ? (@gethostbynamel($host) ?: []) : [];
+    if (!$ips && function_exists('dns_get_record')) {
+        foreach ((array)@dns_get_record($host, DNS_A | DNS_AAAA) as $r) { $ip = $r['ip'] ?? ($r['ipv6'] ?? null); if ($ip) $ips[] = $ip; }
+    }
+    return array_values(array_unique(array_filter($ips)));
+}
+/** A hospedagem usa um proxy de saída? (aí o IP conectado é o do proxy, não o do site) */
+function via_proxy(): bool { return (string)(getenv('https_proxy') ?: getenv('HTTPS_PROXY') ?: getenv('all_proxy') ?: '') !== ''; }
+function ip_is_public(string $ip): bool {
+    return (bool)filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE);
+}
+
 /**
  * Proteção SSRF: só http/https e só endereços públicos da internet.
- * Retorna "host:porta:ip" para FIXAR o IP na conexão (impede o truque de trocar o DNS no meio do caminho) ou null.
+ * Retorna ['ok' => bool, 'pin' => "host:porta:ip" ou null, 'why' => motivo].
+ * O "pin" fixa o IP na conexão (impede trocar o DNS no meio do caminho). Se o DNS do PHP
+ * não funcionar na hospedagem, deixa o cURL resolver e confere o IP depois de conectar.
  */
-function url_public_resolve(string $url): ?string {
+function url_guard(string $url): array {
     $p = parse_url($url);
-    if (!$p || !in_array(strtolower($p['scheme'] ?? ''), ['http', 'https'], true) || empty($p['host']) || isset($p['user']) || isset($p['pass'])) return null;
+    if (!$p || !in_array(strtolower($p['scheme'] ?? ''), ['http', 'https'], true) || empty($p['host']) || isset($p['user']) || isset($p['pass']))
+        return ['ok' => false, 'pin' => null, 'why' => 'link inválido'];
     $host = strtolower(trim($p['host'], '[]'));
     $port = (int)($p['port'] ?? (strtolower($p['scheme']) === 'https' ? 443 : 80));
-    if (!in_array($port, [80, 443, 8080, 8443], true)) return null;
-    $ips = filter_var($host, FILTER_VALIDATE_IP) ? [$host] : (gethostbynamel($host) ?: []);
-    if (!$ips) return null;
-    foreach ($ips as $ip) {
-        if (!filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE)) return null;
-    }
-    return "$host:$port:" . $ips[0];
+    if (!in_array($port, [80, 443, 8080, 8443], true)) return ['ok' => false, 'pin' => null, 'why' => 'porta não permitida'];
+    if ($host === 'localhost' || str_ends_with($host, '.local') || str_ends_with($host, '.internal')) return ['ok' => false, 'pin' => null, 'why' => 'endereço interno bloqueado'];
+    $ips = host_ips($host);
+    if (!$ips) return ['ok' => true, 'pin' => null, 'why' => ''];
+    foreach ($ips as $ip) if (!ip_is_public($ip)) return ['ok' => false, 'pin' => null, 'why' => 'endereço interno bloqueado'];
+    $ip = $ips[0];
+    return ['ok' => true, 'pin' => "$host:$port:" . (str_contains($ip, ':') ? "[$ip]" : $ip), 'why' => ''];
 }
-function url_is_public(string $url): bool { return url_public_resolve($url) !== null; }
+function url_public_resolve(string $url): ?string { $g = url_guard($url); return $g['ok'] ? ($g['pin'] ?? '') : null; }
+function url_is_public(string $url): bool { return url_guard($url)['ok']; }
 
-/** GET seguro: confere cada redirecionamento e fixa o IP. Retorna [código, corpo] */
+/** Último resultado de rede (para mensagens de erro claras) */
+function http_last(?array $set = null): array { static $last = []; if ($set !== null) $last = $set; return $last; }
+
+/** GET seguro: confere cada redirecionamento e fixa o IP. Retorna [código, corpo, info] */
 function safe_curl_get(string $url, array $opts = [], int $maxRedirects = 4): array {
+    $info = ['url' => $url, 'errno' => 0, 'error' => '', 'ip' => '', 'time' => 0, 'ctype' => '', 'why' => ''];
     for ($i = 0; $i <= $maxRedirects; $i++) {
         if (str_starts_with($url, '//')) $url = 'https:' . $url;
-        $pin = url_public_resolve($url);
-        if (!$pin) return [0, null];
+        $g = url_guard($url);
+        if (!$g['ok']) { $info['why'] = $g['why']; http_last($info + ['code' => 0]); return [0, null, $info]; }
         $ch = curl_init($url);
         curl_setopt_array($ch, $opts + [CURLOPT_TIMEOUT => 20, CURLOPT_CONNECTTIMEOUT => 8, CURLOPT_ENCODING => '']);
-        curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_FOLLOWLOCATION => false, CURLOPT_RESOLVE => [$pin],
-            CURLOPT_PROTOCOLS => CURLPROTO_HTTP | CURLPROTO_HTTPS]);
+        curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_FOLLOWLOCATION => false, CURLOPT_PROTOCOLS => CURLPROTO_HTTP | CURLPROTO_HTTPS]);
+        if ($g['pin']) curl_setopt($ch, CURLOPT_RESOLVE, [$g['pin']]);
         $body = curl_exec($ch);
         $code = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
         $loc = (string)curl_getinfo($ch, CURLINFO_REDIRECT_URL);
+        $info = ['url' => $url, 'errno' => curl_errno($ch), 'error' => curl_error($ch), 'ip' => (string)curl_getinfo($ch, CURLINFO_PRIMARY_IP),
+                 'time' => round((float)curl_getinfo($ch, CURLINFO_TOTAL_TIME), 2), 'ctype' => (string)curl_getinfo($ch, CURLINFO_CONTENT_TYPE), 'why' => ''];
         curl_close($ch);
+        if (!$g['pin'] && !via_proxy() && $info['ip'] !== '' && !ip_is_public($info['ip'])) { $info['why'] = 'endereço interno bloqueado'; http_last($info + ['code' => 0]); return [0, null, $info]; }
         if ($code >= 300 && $code < 400 && $loc !== '') { $url = $loc; continue; }
-        return [$code, $body === false ? null : $body];
+        http_last($info + ['code' => $code]);
+        return [$code, $body === false ? null : $body, $info];
     }
-    return [0, null];
+    http_last($info + ['code' => 0, 'why' => 'redirecionamentos demais']);
+    return [0, null, $info];
 }
 
 function provider_referer(string $provider): string {
@@ -128,15 +156,17 @@ function img_curl_opts(string $referer): array {
 /** Baixa várias imagens em paralelo. Retorna [indice => bytes] das que responderam. */
 function fetch_images(array $urls, string $referer): array {
     if (!function_exists('curl_multi_init')) return [];
-    $mh = curl_multi_init(); $hs = []; $redirects = [];
+    $mh = curl_multi_init(); $hs = []; $redirects = []; $pins = [];
     foreach ($urls as $i => $u) {
         if (!is_string($u)) continue;
         if (str_starts_with($u, '//')) $u = 'https:' . $u;
         $pin = url_public_resolve($u);
-        if (!$pin) continue;
+        if ($pin === null) continue;
         $ch = curl_init($u);
         curl_setopt_array($ch, img_curl_opts($referer) + [CURLOPT_RETURNTRANSFER => true, CURLOPT_FOLLOWLOCATION => false,
-            CURLOPT_RESOLVE => [$pin], CURLOPT_PROTOCOLS => CURLPROTO_HTTP | CURLPROTO_HTTPS]);
+            CURLOPT_PROTOCOLS => CURLPROTO_HTTP | CURLPROTO_HTTPS]);
+        if ($pin !== '') curl_setopt($ch, CURLOPT_RESOLVE, [$pin]);
+        $pins[$i] = $pin;
         curl_multi_add_handle($mh, $ch);
         $hs[$i] = $ch;
     }
@@ -145,6 +175,8 @@ function fetch_images(array $urls, string $referer): array {
     foreach ($hs as $i => $ch) {
         $code = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
         $body = curl_multi_getcontent($ch);
+        $pip = (string)curl_getinfo($ch, CURLINFO_PRIMARY_IP);
+        if (($pins[$i] ?? '') === '' && !via_proxy() && $pip !== '' && !ip_is_public($pip)) $code = 0;
         if ($code === 200 && is_string($body) && $body !== '') $out[$i] = $body;
         elseif ($code >= 300 && $code < 400 && ($loc = (string)curl_getinfo($ch, CURLINFO_REDIRECT_URL)) !== '') $redirects[$i] = $loc;
         curl_multi_remove_handle($mh, $ch); curl_close($ch);

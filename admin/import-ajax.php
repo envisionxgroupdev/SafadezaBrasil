@@ -62,9 +62,17 @@ switch ($_POST['action'] ?? '') {
         if (!isset(importer_search_providers()[$prov])) out(['ok' => false, 'msg' => 'Site inválido']);
         $q = trim($_POST['q'] ?? '');
         if ($q === '') out(['ok' => false, 'msg' => 'Digite uma palavra-chave']);
-        $list = importer_search($prov, $q, max(1, (int)($_POST['page'] ?? 1)), $_POST['order'] ?? 'recentes');
+        $res = importer_search_full($prov, mb_substr($q, 0, 100), max(1, min(500, (int)($_POST['page'] ?? 1))), (string)($_POST['order'] ?? 'recentes'));
+        $list = $res['items'];
         foreach ($list as &$r) $r['duration_fmt'] = fmt_duration((int)$r['duration']);
-        out(['ok' => true, 'items' => $list, 'msg' => $list ? '' : 'Nada encontrado (ou a API do site não respondeu).']);
+        unset($r);
+        $name = importer_search_providers()[$prov];
+        out(['ok' => true, 'items' => $list, 'msg' => $list ? '' : "$name: " . $res['error'], 'blocked' => !$list && !str_contains($res['error'], 'não tem (mais)')]);
+    }
+
+    case 'diagnose': {
+        @set_time_limit(120);
+        out(['ok' => true] + importer_diagnose());
     }
 
     case 'save_one': {

@@ -99,7 +99,7 @@ admin_header('Importador de vídeos', 'import');
   <form class="card" id="search-form" data-workers="<?= DB_DRIVER === 'mysql' ? 3 : 1 ?>">
     <div class="row">
       <div class="field"><label>Site</label><select name="provider">
-        <option value="all">Todos (Pornhub + RedTube + Eporner)</option>
+        <option value="all">Todos os sites (Eporner, XVideos, Pornhub, RedTube)</option>
         <?php foreach (importer_search_providers() as $k => $n): ?><option value="<?= $k ?>"><?= e($n) ?></option><?php endforeach; ?></select></div>
       <div class="field"><label>Palavra-chave</label><input type="text" name="q" placeholder="ex.: brasileira" required maxlength="100"></div>
       <div class="field"><label>Ordenar</label><select name="order"><option value="recentes">Mais recentes</option><option value="vistos">Mais vistos</option><option value="curtidos">Mais bem avaliados</option></select></div>
@@ -118,6 +118,11 @@ admin_header('Importador de vídeos', 'import');
     <div class="progress" id="search-progress" style="display:none"><span id="search-bar"></span></div>
     <div class="muted" id="search-status" style="margin-top:6px"></div>
     <div class="log" id="search-log" style="display:none"></div>
+    <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--line)">
+      <button type="button" class="btn" id="diag-btn">🩺 Testar conexão com os sites</button>
+      <small class="muted" style="margin-left:6px">Mostra se cada site responde ao seu servidor e, se não, o motivo.</small>
+      <div id="diag-out"></div>
+    </div>
   </form>
 
   <div class="card" id="search-results" style="display:none">

@@ -116,17 +116,17 @@
   /* ========== BUSCAR (várias páginas) ========== */
   const sForm = $('#search-form');
   if (sForm) {
-    const PROVS = ['pornhub', 'redtube', 'eporner'];
+    const PROVS = ['eporner', 'xvideos', 'pornhub', 'redtube'];
     const grid = $('#search-grid'), box = $('#search-results'), log = $('#search-log');
     const status = t => $('#search-status').textContent = t;
     const bar = p => { $('#search-progress').style.display = 'block'; $('#search-bar').style.width = Math.min(100, p) + '%'; };
     const line = (cls, t) => { log.style.display = 'block'; log.insertAdjacentHTML('beforeend', `<div class="${cls}">${esc(t)}</div>`); if (log.children.length > 400) log.firstChild.remove(); log.scrollTop = log.scrollHeight; };
-    let items = [], seen = new Set(), pages = {}, done = {}, stop = false, busy = false, lastQuery = '';
+    let items = [], seen = new Set(), pages = {}, done = {}, stop = false, busy = false, lastQuery = '', failures = [];
     const count = () => $('#sel-count').textContent = $$('.ritem.sel', grid).length;
     const sleep = ms => new Promise(r => setTimeout(r, ms));
 
     const reset = () => {
-      items = []; seen = new Set(); pages = {}; done = {}; grid.innerHTML = ''; log.innerHTML = ''; log.style.display = 'none';
+      items = []; seen = new Set(); pages = {}; done = {}; failures = []; grid.innerHTML = ''; log.innerHTML = ''; log.style.display = 'none';
       const start = Math.max(1, +sForm.page.value || 1);
       provs().forEach(p => { pages[p] = start; done[p] = false; });
     };
@@ -150,7 +150,11 @@
         fd.append('provider', p); fd.append('q', sForm.q.value); fd.append('order', sForm.order.value); fd.append('page', pages[p]);
         const r = await call('search', fd);
         pages[p]++;
-        if (!r.ok || !r.items || !r.items.length) { done[p] = true; if (!r.ok && r.msg) line('err', `${p}: ${r.msg}`); continue; }
+        if (!r.ok || !r.items || !r.items.length) {
+          done[p] = true;
+          if (r.msg) { line(r.blocked || !r.ok ? 'err' : 'skip', (r.blocked ? '⚠ ' : '• ') + r.msg); failures.push(r.msg); }
+          continue;
+        }
         const fresh = r.items.filter(it => { const k = it.provider + ':' + it.source_id; if (seen.has(k)) return false; seen.add(k); return true; });
         fresh.forEach(it => { it._i = items.length; items.push(it); });
         added += fresh.length;
@@ -169,7 +173,8 @@
         await fetchRound();
         status(`Buscando... ${items.length} de ${target}`); bar(items.length / target * 100);
       }
-      status(`${items.length} vídeos encontrados` + (exhausted() ? ' (não há mais resultados)' : '') + '. Clique para selecionar ou use “Selecionar todos”.');
+      if (!items.length) { box.style.display = 'none'; status('Nenhum vídeo encontrado. Veja o motivo de cada site acima e clique em “Testar conexão com os sites”.'); }
+      else status(`${items.length} vídeos encontrados` + (exhausted() ? ' (não há mais resultados)' : '') + '. Clique para selecionar ou use “Selecionar todos”.');
       setBusy(false); count();
     };
 
@@ -210,6 +215,7 @@
       await fetchRound();
       const queue = items.filter(x => !x.exists).map(x => (x._queued = true, x));
       const r = await importQueue(queue, target, 'Importação automática', true);
+      if (!items.length) status('Nenhum vídeo encontrado. Veja o motivo de cada site acima e clique em “Testar conexão com os sites”.');
       line(stop ? 'skip' : 'ok', stop ? `■ Parado. ${r.ok} importados.` : `— Concluído: ${r.ok} importados${exhausted() && r.ok < target ? ' (acabaram os resultados dessa busca)' : ''} —`);
       setBusy(false); count();
     };
@@ -225,6 +231,22 @@
         if (target >= 500 && !confirm(`Importar até ${target} vídeos agora? Pode levar alguns minutos — deixe esta aba aberta.`)) return;
         auto(target);
       } else pick(target);
+    });
+    const diagBtn = $('#diag-btn');
+    if (diagBtn) diagBtn.addEventListener('click', async () => {
+      const out = $('#diag-out'); diagBtn.disabled = true; diagBtn.textContent = 'Testando (até 1 minuto)...';
+      out.innerHTML = '';
+      const r = await call('diagnose', {});
+      diagBtn.disabled = false; diagBtn.textContent = '🩺 Testar conexão com os sites';
+      if (!r.ok) { out.innerHTML = `<div class="alert err">${esc(r.msg || 'Erro')}</div>`; return; }
+      const sv = r.server;
+      out.innerHTML = `<p class="muted" style="margin:10px 0">Servidor: <b>${esc(sv.country || 'país desconhecido')}</b> · IP ${esc(sv.ip || '?')} · PHP ${esc(sv.php)} · cURL ${esc(sv.curl)} · DNS ${esc(sv.dns)}</p>
+        <div class="table-wrap"><table><thead><tr><th>Site</th><th>Resultado</th><th>Detalhe</th></tr></thead><tbody>` +
+        r.sites.map(s => `<tr><td><b>${esc(s.site)}</b></td><td>${s.ok ? `<span class="tag published">✓ ${s.count} vídeos</span>` : '<span class="tag open">✗ não funcionou</span>'}</td>
+          <td><small>${s.ok ? `Respondeu em ${s.time}s` + (s.thumb ? ` · <a href="#" data-thumb="${esc(s.thumb)}" data-p="${esc(s.site.toLowerCase())}">ver thumb</a>` : '') : esc(s.msg) + (s.http && !/HTTP/.test(s.msg) ? ` (HTTP ${s.http})` : '')}</small></td></tr>`).join('') +
+        `</tbody></table></div>` + (r.sites.some(s => s.ok) ? '<p class="muted">Use os sites que funcionaram (ou “Todos”: os que não respondem são pulados).</p>'
+        : '<div class="alert err">Nenhum site respondeu ao seu servidor. Envie esta tela para o suporte da hospedagem e pergunte se conexões de saída (cURL/HTTPS) estão liberadas.</div>');
+      $$('[data-thumb]', out).forEach(a => a.addEventListener('click', e => { e.preventDefault(); window.open(proxy(a.dataset.thumb, a.dataset.p), '_blank'); }));
     });
     $('#search-stop').addEventListener('click', () => { stop = true; status('Parando...'); });
     $('#search-more').addEventListener('click', () => { if (!busy) pick(items.length + (+sForm.qty.value || 100)); });
