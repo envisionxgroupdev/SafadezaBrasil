@@ -271,7 +271,7 @@ function video_card(array $v): string {
         <img src="' . e(video_thumb_url($v)) . '" alt="' . e($v['title']) . '" loading="lazy" decoding="async" referrerpolicy="no-referrer" onerror="window.thumbFail?thumbFail(this):(this.onerror=null,this.src=\'' . e($noThumb) . '\')">
         ' . ($hd ? '<span class="hd">HD</span>' : '') . '
         ' . ($dur ? '<span class="dur">' . $dur . '</span>' : '') . '
-        ' . (!empty($v['featured']) ? '<span class="badge">Destaque</span>' : '') . '
+        ' . (!empty($v['featured']) ? '<span class="badge">Destaque</span>' : (strtotime($v['created_at']) > time() - 172800 ? '<span class="badge new">Novo</span>' : '')) . '
         ' . ($attr ? '<span class="pbar"><i></i></span>' : '') . '
       </a>
       <a href="' . e(video_url($v)) . '" class="title">' . e($v['title']) . '</a>
